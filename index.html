@@ -75,6 +75,37 @@
 </head>
 <body class="min-h-screen flex flex-col pb-24 md:pb-0">
 
+<!-- ===== PASSWORD GATE ===== -->
+<div id="gate" style="position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:20px;">
+  <div style="font-size:48px">☁️</div>
+  <div style="font-size:20px;font-weight:700;color:var(--txt)">雲小朵 Lumi</div>
+  <input type="password" id="gatePw" placeholder="輸入密碼" style="max-width:280px;text-align:center;font-size:16px">
+  <button onclick="tryGate()" class="btn" style="max-width:280px">解鎖</button>
+  <div id="gateErr" style="color:#C0392B;font-size:13px;display:none">密碼錯誤</div>
+</div>
+<script>
+(function(){
+  var PW = 'lumi2026';
+  var session = localStorage.getItem('lumi_auth');
+  if(session !== PW){
+    document.getElementById('gate').style.display = 'flex';
+    document.getElementById('gatePw').focus();
+    document.getElementById('gatePw').addEventListener('keydown', function(e){ if(e.key==='Enter') tryGate(); });
+  }
+})();
+function tryGate(){
+  var v = document.getElementById('gatePw').value;
+  if(v === 'lumi2026'){
+    localStorage.setItem('lumi_auth', v);
+    document.getElementById('gate').style.display = 'none';
+  } else {
+    document.getElementById('gateErr').style.display = 'block';
+    document.getElementById('gatePw').value = '';
+    document.getElementById('gatePw').focus();
+  }
+}
+</script>
+
 <!-- Header -->
 <header class="sticky top-0 z-30 px-3 py-2 flex items-center justify-between" style="background:var(--bg);border-bottom:1px solid var(--line);">
   <div class="flex items-center gap-2">
