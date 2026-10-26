@@ -55,6 +55,22 @@ Deno.serve(async (req) => {
     let result;
     if (body.action === "autotag") {
       result = await autotag(body.content || "");
+    } else if (body.action === "health") {
+      return json({
+        openrouter: !!Deno.env.get("OPENROUTER_API_KEY"),
+        cloudflare: !!(Deno.env.get("CLOUDFLARE_ACCOUNT_ID") && Deno.env.get("CLOUDFLARE_API_TOKEN")),
+        gemini: !!(Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY")),
+      }, 200);
+    } else if (body.action === "diag") {
+      const k = Deno.env.get("OPENROUTER_API_KEY");
+      if (!k) return json({ error: "no openrouter key" }, 500);
+      const rk = await fetch("https://openrouter.ai/api/v1/key", {
+        headers: { Authorization: `Bearer ${k}` },
+      });
+      const keyInfo = await rk.json();
+      const { data: recent } = await sb
+        .from("ai_usage_log").select("date,count").order("date", { ascending: false }).limit(7);
+      return json({ http: rk.status, key: keyInfo, recentUsage: recent }, 200);
     } else if (body.action === "chat") {
       result = await chat(body.message || "", body.context || {});
     } else {
@@ -100,7 +116,11 @@ async function callOpenRouter(messages, model = "openrouter/free") {
       ]
     : [model];
   let lastErr;
+  let tried = 0;
   for (const m of candidates) {
+    // 免費模型每日只有 50 次請求，一次訊息最多試 3 個模型，避免一個訊息吃掉整個額度
+    if (tried >= 3) break;
+    tried++;
     try {
       const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -147,27 +167,53 @@ async function callCloudflare(messages) {
 }
 
 async function callGemini(messages) {
-  const key = Deno.env.get("GEMINI_API_KEY");
+  const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
   if (!key) throw new ProviderError("no gemini key", "unavailable");
-  const sys = messages.find(m => m.role === "system")?.content || "";
-  const convo = messages.filter(m => m.role !== "system").map(m => ({
+
+  const sys = messages.find((m) => m.role === "system")?.content || "";
+  const convo = messages.filter((m) => m.role !== "system").map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
   }));
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: sys }] },
-        contents: convo,
-      }),
+
+  // 依序嘗試目前線上的模型（2.0 已於 2026 年關閉，不可再使用）
+  const models = Deno.env.get("GEMINI_MODEL")
+    ? [Deno.env.get("GEMINI_MODEL")!]
+    : ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+
+  let lastErr = "";
+  for (const model of models) {
+    try {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: sys }] },
+            contents: convo,
+            generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+          }),
+        },
+      );
+
+      if (r.status === 429) throw new ProviderError(`gemini 429 ${model}`, "rate_limit");
+      if (r.status === 401 || r.status === 403) {
+        throw new ProviderError(`gemini ${r.status} 金鑰無效 ${model}`, "unavailable");
+      }
+      if (!r.ok) { lastErr = `gemini ${r.status} ${model}`; continue; }
+
+      const d = await r.json();
+      const parts = d.candidates?.[0]?.content?.parts || [];
+      const text = parts.map((x: any) => x.text || "").join("").trim();
+      if (text) return text;
+      lastErr = `gemini 空回應 ${model}`;
+    } catch (e) {
+      if (e instanceof ProviderError) throw e;
+      lastErr = `gemini ${model} ${String((e as any).message || e)}`;
     }
-  );
-  if (!r.ok) throw new Error("gemini " + r.status);
-  const d = await r.json();
-  return d.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  }
+  throw new ProviderError(lastErr || "gemini 全部模型失敗", "provider");
 }
 
 async function withFailover(messages) {

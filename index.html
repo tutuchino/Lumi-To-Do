@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- LUMI v23 -->
+<!-- LUMI v24 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <title>雲小朵 Lumi · 待辦</title>
 <meta name="theme-color" content="#EBDEC2">
@@ -427,7 +427,7 @@ async function cloudPushNow(){
       </div>
       <label class="flex items-center gap-2 text-xs"><input type="checkbox" id="tNoDate" onchange="toggleDateBox(this.checked)"> <span>不排日期（Backlog）</span></label>
       <div id="dateBox" class="grid grid-cols-2 gap-2">
-        <div><label class="text-[11px]" style="color:var(--muted)">日期</label><input type="date" id="tDate"></div>
+        <div><label class="text-[11px]" style="color:var(--muted)">日期</label><input type="date" id="tDate" oninput="updateRepeatPreview()"></div>
         <div><label class="text-[11px]" style="color:var(--muted)">時間</label><input type="time" id="tTime"></div>
       </div>
       <div class="grid grid-cols-2 gap-2">
@@ -452,9 +452,9 @@ async function cloudPushNow(){
         <div id="customDaysBox" class="hidden mt-1"><input type="number" id="tCustomDays" placeholder="天數"></div>
         <div id="lunarDayBox" class="hidden mt-1">
           <label class="text-[11px]" style="color:var(--muted)">農曆日期：</label>
-          <select id="tLunarDay"><option value="1">初一</option><option value="2">初二</option><option value="3">初三</option><option value="15">十五</option><option value="20">二十</option></select>
-          <div class="text-[10px] mt-1" style="color:var(--muted)">（可自訂其他日）</div>
+          <select id="tLunarDay" onchange="onLunarDayChange()"></select>
         </div>
+        <div id="repeatPreview" class="text-[11px] mt-1.5" style="color:var(--accent)"></div>
       </div>
       <div>
         <div class="flex justify-between items-center mb-1">
@@ -665,6 +665,140 @@ function isEN(){ return (appData.settings.lang||'zh') === 'en'; }
 
 /* ---- lunar helper: never crash if the CDN library is missing ---- */
 function hasLunar(){ return typeof Solar !== 'undefined'; }
+function lunarMonthName(l){
+  // 函式庫回傳簡體「闰」，統一轉成繁體
+  return (l.getMonthInChinese() + '月' + l.getDayInChinese()).replace('闰','閏');
+}
+function leapMonthOf(lunarYear){
+  try{
+    if(typeof LunarYear === 'undefined') return 0;
+    return LunarYear.fromYear(lunarYear).getLeapMonth();
+  }catch(e){ return 0; }
+}
+function lunarDayLabel(n){
+  const d = ['','一','二','三','四','五','六','七','八','九','十'];
+  n = parseInt(n,10);
+  if(n<=0) return '';
+  if(n<=10) return '初'+d[n];
+  if(n<20) return '十'+d[n-10];
+  if(n===20) return '二十';
+  if(n<30) return '廿'+d[n-20];
+  return '三十';
+}
+function initLunarDaySelect(){
+  const sel = document.getElementById('tLunarDay');
+  if(!sel || sel.options.length) return;
+  let html = '';
+  for(let i=1;i<=30;i++) html += `<option value="${i}">${lunarDayLabel(i)}</option>`;
+  sel.innerHTML = html;
+  sel.value = '1';
+}
+
+/* 農曆比對：含閏月處理 */
+function lunarMatch(t, dk){
+  const [cy,cm,cd] = dk.split('-').map(Number);
+  const cl = lunarOf(cy,cm,cd);
+  if(!cl) return false;
+  const [ty,tm,td] = t.date.split('-').map(Number);
+  const base = lunarOf(ty,tm,td);
+  const wantDay = parseInt(t.lunarDay || (base ? base.getDay() : 0), 10);
+  if(!wantDay) return false;
+  if(cl.getDay() !== wantDay) return false;
+  if(t.repeat === 'lunar_monthly') return true;
+  // 每年（農曆）：月份也要對
+  if(!base) return false;
+  const bm = base.getMonth();          // 負數＝閏月
+  const abs = Math.abs(bm);
+  if(bm < 0){
+    // 任務設在閏月：該年有這個閏月 → 只在閏月那天；沒閏月 → 退回正月份那天
+    const leap = leapMonthOf(cl.getYear());
+    return leap === abs ? cl.getMonth() === -abs : cl.getMonth() === abs;
+  }
+  return cl.getMonth() === abs;
+}
+
+/* 某個任務是否落在某一天（不再依賴 appData） */
+function taskMatchesDate(t, dk){
+  if(!t || t.isBacklog || !t.date) return false;
+  if(t.date === dk) return true;
+  if(!t.repeat || t.repeat === 'none' || t.date >= dk) return false;
+  const [ty,tm,td] = t.date.split('-').map(Number);
+  const [cy,cm,cd] = dk.split('-').map(Number);
+  if(t.repeat === 'daily') return true;
+  if(t.repeat === 'weekly') return new Date(ty,tm-1,td).getDay() === new Date(cy,cm-1,cd).getDay();
+  if(t.repeat === 'monthly') return td === cd;
+  if(t.repeat === 'yearly') return tm === cm && td === cd;
+  if(t.repeat === 'lunar_yearly' || t.repeat === 'lunar_monthly') return lunarMatch(t, dk);
+  if(t.repeat === 'custom_days' && t.customDays){
+    const diff = Math.ceil((new Date(cy,cm-1,cd) - new Date(ty,tm-1,td)) / 86400000);
+    return diff % parseInt(t.customDays,10) === 0;
+  }
+  return false;
+}
+
+/* 從某天起，找下一次會發生的日期（最多往後找 400 天） */
+function nextOccurrence(t, fromKey){
+  if(!t || !t.date) return null;
+  const start = t.date > fromKey ? t.date : fromKey;
+  const d = new Date(start + 'T00:00:00');
+  for(let i=0;i<400;i++){
+    const dk = fmtKey(d);
+    if(taskMatchesDate(t, dk)) return dk;
+    d.setDate(d.getDate()+1);
+  }
+  return null;
+}
+
+function updateRepeatPreview(){
+  const box = document.getElementById('repeatPreview');
+  if(!box) return;
+  const dateVal = document.getElementById('tDate').value;
+  const repeat = document.getElementById('tRepeat').value;
+  const lunarDay = document.getElementById('tLunarDay').value;
+  if(!dateVal){ box.innerText = '請先選日期'; return; }
+  const [y,m,d] = dateVal.split('-').map(Number);
+  const l = lunarOf(y,m,d);
+  const ltxt = l ? `（農曆 ${lunarMonthName(l)}）` : '';
+  if(!repeat || repeat === 'none'){
+    box.innerText = `僅此一天：${dateVal} ${ltxt}`;
+    return;
+  }
+  const next = nextOccurrence({ date: dateVal, repeat, lunarDay, isBacklog:false }, fmtKey(new Date()));
+  if(!next){
+    box.innerText = '⚠️ 這個設定在未來一年內不會觸發，請檢查日期';
+    return;
+  }
+  const [ny,nm,nd] = next.split('-').map(Number);
+  const nl = lunarOf(ny,nm,nd);
+  const ntxt = nl ? `（農曆 ${lunarMonthName(nl)}）` : '';
+  const rule = repeat === 'lunar_monthly' ? ' · 每月農曆' + lunarDayLabel(lunarDay) + '重複'
+             : repeat === 'lunar_yearly'  ? ' · 每年農曆同一天重複'
+             : '';
+  box.innerText = `下次提醒：${next} ${ntxt}${rule}`;
+}
+
+/* 選「每月農曆」時，把日期自動對齊到最近的該農曆日 */
+function onLunarDayChange(){
+  const repeat = document.getElementById('tRepeat').value;
+  if(repeat !== 'lunar_monthly'){ updateRepeatPreview(); return; }
+  const day = parseInt(document.getElementById('tLunarDay').value, 10);
+  const dateVal = document.getElementById('tDate').value;
+  let cur = null;
+  if(dateVal){ const [y,m,d] = dateVal.split('-').map(Number); cur = lunarOf(y,m,d); }
+  if(!cur || cur.getDay() !== day){
+    const today = fmtKey(new Date());
+    const d = new Date(today + 'T00:00:00');
+    for(let i=0;i<70;i++){
+      const dk = fmtKey(d);
+      const [yy,mm,dd] = dk.split('-').map(Number);
+      const l = lunarOf(yy,mm,dd);
+      if(l && l.getDay() === day){ document.getElementById('tDate').value = dk; break; }
+      d.setDate(d.getDate()+1);
+    }
+  }
+  updateRepeatPreview();
+}
+
 function lunarOf(y,m,d){
   try{
     if(!hasLunar()) return null;
@@ -785,7 +919,7 @@ function renderAlmanac(){
   const s = Solar.fromDate(now), l = s.getLunar();
   const WDN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   document.getElementById('alSolar').innerText = `${s.getYear()}.${String(s.getMonth()).padStart(2,'0')}.${String(s.getDay()).padStart(2,'0')} ${isEN()?WDN[now.getDay()]:'週'+'日一二三四五六'[now.getDay()]}`;
-  document.getElementById('alLunar').innerText = `農曆 ${l.getMonthInChinese()}月${l.getDayInChinese()}`;
+  document.getElementById('alLunar').innerText = `農曆 ${lunarMonthName(l)}`;
   document.getElementById('alJieqi').innerText = `節氣：${l.getJieQi()||'—'}`;
   document.getElementById('alYi').innerText = `宜：${(l.getDayYi()||[]).slice(0,3).join(' · ')||'—'}`;
 }
@@ -838,7 +972,7 @@ function renderCalendar(){
       const dk = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const l = lunarOf(y,m+1,d);
       let lt = l ? l.getDayInChinese() : '';
-      if(l && l.getDay()===1) lt = l.getMonthInChinese()+'月';
+      if(l && l.getDay()===1) lt = lunarMonthName(l);
       const h = hols(m+1,d);
       const n = getTasksForDate(dk).length;
       html += `<div class="cal-cell ${dk===today?'today':''} ${dk===selectedKey?'selected':''}" onclick="pickDate('${dk}')">
@@ -933,36 +1067,7 @@ function renderCalendar(){
 function pickDate(dk){ selectedKey = dk; renderCalendar(); }
 
 function getTasksForDate(dk){
-  return appData.tasks.filter(t=>{
-    if(t.isBacklog) return false;
-    if(!t.date) return false;
-    if(t.date===dk) return true;
-    if(t.repeat && t.repeat!=='none' && t.date<dk){
-      const [ty,tm,td]=t.date.split('-').map(Number);
-      const [cy,cm,cd]=dk.split('-').map(Number);
-      if(t.repeat==='daily') return true;
-      if(t.repeat==='weekly' && new Date(ty,tm-1,td).getDay()===new Date(cy,cm-1,cd).getDay()) return true;
-      if(t.repeat==='monthly' && td===cd) return true;
-      if(t.repeat==='yearly' && tm===cm && td===cd) return true;
-      if(t.repeat==='lunar_yearly' || t.repeat==='lunar_monthly'){
-        const cl = lunarOf(cy,cm,cd);
-        const base = lunarOf(ty,tm,td);
-        if(!cl) return false;
-        const wantDay = String(t.lunarDay || (base ? base.getDay() : ''));
-        if(String(cl.getDay()) !== wantDay) return false;
-        if(t.repeat==='lunar_yearly'){
-          const wantMonth = base ? base.getMonth() : -1;
-          if(cl.getMonth() !== wantMonth) return false;
-        }
-        return true;
-      }
-      if(t.repeat==='custom_days' && t.customDays){
-        const diff = Math.ceil((new Date(cy,cm-1,cd)-new Date(ty,tm-1,td))/86400000);
-        if(diff%parseInt(t.customDays)===0) return true;
-      }
-    }
-    return false;
-  });
+  return appData.tasks.filter(t=>taskMatchesDate(t, dk));
 }
 
 function renderSelected(){
@@ -970,7 +1075,7 @@ function renderSelected(){
   const l = lunarOf(y,m,d);
   if(!l) return;
   document.getElementById('selDateTitle').innerText = selectedKey;
-  document.getElementById('selDateLunar').innerText = `農曆 ${l.getMonthInChinese()}月${l.getDayInChinese()}`;
+  document.getElementById('selDateLunar').innerText = `農曆 ${lunarMonthName(l)}`;
   document.getElementById('selHoliday').innerText = hols(m,d).join(' / ');
   document.getElementById('dailyJournalInput').value = appData.journals[selectedKey]||'';
   const list = document.getElementById('selTasks');
@@ -1071,6 +1176,7 @@ function openAddTask(isBacklog){
   document.getElementById('tAmount').value='';
   document.getElementById('tRepeat').value='none';
   document.getElementById('tCustomDays').value='';
+  initLunarDaySelect();
   document.getElementById('tLunarDay').value='1';
   onRepeatChange('none');
   document.getElementById('tTags').value='';
@@ -1090,6 +1196,7 @@ function toggleDateBox(no){ document.getElementById('dateBox').style.opacity = n
 function onRepeatChange(v){
   document.getElementById('customDaysBox').classList.toggle('hidden', v!=='custom_days');
   document.getElementById('lunarDayBox').classList.toggle('hidden', !(v==='lunar_yearly'||v==='lunar_monthly'));
+  updateRepeatPreview();
 }
 function addCategory(){
   const name = prompt('分類名稱：');
@@ -1152,6 +1259,12 @@ function handleSaveTask(e){
     done: r.querySelector('.sub-done').checked
   })).filter(s=>s.title);
   const tags = document.getElementById('tTags').value.split(',').map(t=>t.trim()).filter(Boolean);
+  const dateVal = isBacklog ? null : (document.getElementById('tDate').value || '');
+  if(!isBacklog && !dateVal){
+    toast('請先選日期','沒有日期的任務不會出現在日曆上');
+    document.getElementById('tDate').focus();
+    return;
+  }
   const obj = {
     id: editId||'task_'+Date.now(),
     _new: !editId,
@@ -1161,7 +1274,7 @@ function handleSaveTask(e){
     amount: document.getElementById('tAmount').value,
     currency: document.getElementById('tCurrency').value,
     isBacklog,
-    date: isBacklog ? null : (document.getElementById('tDate').value || fmtKey(new Date())),
+    date: dateVal,
     time: document.getElementById('tTime').value,
     repeat: document.getElementById('tRepeat').value,
     customDays: document.getElementById('tCustomDays').value,
