@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- LUMI v19 -->
+<!-- LUMI v20 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <title>雲小朵 Lumi · 待辦</title>
 <meta name="theme-color" content="#EBDEC2">
@@ -410,7 +410,7 @@ async function cloudPushNow(){
     <form onsubmit="handleSaveTask(event)" class="flex flex-col gap-2.5">
       <input type="hidden" id="editTaskId">
       <div><label class="text-[11px]" style="color:var(--muted)">任務標題</label>
-        <input id="tTitle" required placeholder="例如：繳水費" oninput="previewTags(this.value)"></div>
+        <input id="tTitle" required placeholder="例如：繳水費"></div>
       <div class="grid grid-cols-2 gap-2">
         <div><label class="text-[11px]" style="color:var(--muted)">分類</label>
           <div class="flex gap-1">
@@ -422,9 +422,8 @@ async function cloudPushNow(){
           <select id="tPriority"><option value="low" data-i18n="plow">低</option><option value="mid" selected data-i18n="pmid">中</option><option value="high" data-i18n="phigh">高</option></select>
         </div>
       </div>
-      <div><label class="text-[11px]" style="color:var(--muted)">標籤（逗號分隔，自己加或用 AI 建議）</label>
+      <div><label class="text-[11px]" style="color:var(--muted)">標籤（用逗號分隔）</label>
         <input id="tTags" placeholder="例如：繳費, 水費" class="mt-1">
-        <div id="aiTagBox" class="mt-1 text-[11px]" style="color:var(--muted)"></div>
       </div>
       <label class="flex items-center gap-2 text-xs"><input type="checkbox" id="tNoDate" onchange="toggleDateBox(this.checked)"> <span>不排日期（Backlog）</span></label>
       <div id="dateBox" class="grid grid-cols-2 gap-2">
@@ -620,7 +619,7 @@ const I18N = {
     '例如：買牛奶':'e.g. Buy milk','備註...':'Notes...','新增分類…':'New category...',
     '優先度':'Priority','低':'Low','中':'Medium','高':'High',
     '不排日期（Backlog）':'No date (Backlog)','不排日期':'No date',
-    '標籤（逗號分隔，自己加或用 AI 建議）':'Tags (comma separated, or use AI suggest)',
+    '標籤（用逗號分隔）':'Tags (comma separated)',
     '新增提醒':'Add reminder','新增子任務':'Add subtask','回到今天':'Back to today','搜尋任務...':'Search tasks...','搜尋任務、日誌...':'Search tasks, journals...',
     '關鍵字搜尋日誌...':'Search journal...','按住此處說話，或打字...':'Hold to speak, or type...',
     '例如：買牛奶':  'e.g. Buy milk',
@@ -1024,7 +1023,6 @@ function openAddTask(isBacklog){
   addReminderRow('at_time','banner');
   setTimeout(()=>{ relang(); }, 30);
   document.getElementById('subRows').innerHTML='';
-  document.getElementById('aiTagBox').innerText='';
   document.getElementById('tTags').value='';
   document.getElementById('taskModal').classList.remove('hidden');
   setTimeout(()=>document.getElementById('tTitle').focus(),100);
@@ -1079,33 +1077,6 @@ function addSubtaskRow(title='', tag='', done=false){
     <input type="text" class="sub-tag w-20 text-xs" placeholder="標籤" value="${esc(tag)}">
     <button type="button" class="chip" onclick="this.parentElement.remove()">✕</button>`;
   c.appendChild(row);
-}
-
-function previewTags(text){
-  const box = document.getElementById('aiTagBox');
-  if(!text.trim()){ box.innerText=''; return; }
-  // local quick heuristic
-  const map=[['繳|費|水電|房租',['付款']],['買|購物|超市',['購物']],['打掃|洗衣|整理',['家務']],['開會|報告|專案',['工作']],['運動|吃藥|瑜伽',['健康']]];
-  const tags=new Set(['日常']);
-  map.forEach(([k,v])=>{ if(new RegExp(k).test(text)) v.forEach(x=>tags.add(x)); });
-  box.innerHTML = '建議：'+Array.from(tags).map(t=>`<span class="chip">#${t}</span>`).join('');
-  requestAiTag(text);
-}
-let pendingAI = null;
-async function requestAiTag(text){
-  if(!appData.settings.supabaseUrl) return;
-  try{
-    const r = await lumiCall({action:'autotag', content:text});
-    if(r && r.tags){
-      pendingAI = r;
-      document.getElementById('aiTagBox').innerHTML += `<br>🤖 AI 建議：分類 ${esc(r.category||'')} ${(r.tags||[]).map(t=>`<span class="chip">#${esc(t)}</span>`).join('')} <button class="chip" onclick="applyAITags()">採用</button>`;
-    }
-  }catch(e){}
-}
-function applyAITags(){
-  if(!pendingAI) return;
-  document.getElementById('tTags').value = (pendingAI.tags||[]).join(', ');
-  pendingAI = null;
 }
 
 function handleSaveTask(e){
