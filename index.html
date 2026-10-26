@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- LUMI v17 -->
+<!-- LUMI v18 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <title>雲小朵 Lumi · 待辦</title>
 <meta name="theme-color" content="#EBDEC2">
@@ -84,7 +84,7 @@
 <body class="min-h-screen flex flex-col pb-24 md:pb-0">
 
 <!-- ===== LOGIN GATE ===== -->
-<div id="gate" style="position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:20px;">
+<div id="gate" style="position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:20px;">
   <div style="font-size:48px">☁️</div>
   <div style="font-size:20px;font-weight:700;color:var(--txt)">雲小朵 Lumi</div>
   <input type="email" id="loginEmail" placeholder="Email" style="max-width:300px;text-align:center">
@@ -96,27 +96,49 @@
 <script>
 const SUPA_URL = 'https://imubpdyhqxqpvmnalzxq.supabase.co';
 const SUPA_KEY = 'sb_publishable_KxheshgJBN-v_j0ca7epLQ_B24nnAcM';
-const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+let supa = null;
+function ensureSupa(){
+  if(supa) return supa;
+  try{
+    if(typeof supabase !== 'undefined' && supabase.createClient){
+      supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+    }
+  }catch(e){ console.warn('supabase init failed', e); }
+  return supa;
+}
+ensureSupa();
 
+let cloudUser = null;
+let pushTimer = null, pushing = false, pendingPush = false;
+
+/* ---------- login ---------- */
 async function doLogin(){
   const email = document.getElementById('loginEmail').value.trim();
   const pw = document.getElementById('loginPw').value;
   const errEl = document.getElementById('loginErr');
   errEl.style.display = 'none';
   if(!email || !pw){ errEl.textContent='請輸入 Email 和密碼'; errEl.style.display='block'; return; }
+  const s = ensureSupa();
+  if(!s){ errEl.textContent='無法連線，請檢查網路'; errEl.style.display='block'; return; }
   try {
-    let { data, error } = await supa.auth.signInWithPassword({ email, password: pw });
+    let { data, error } = await s.auth.signInWithPassword({ email, password: pw });
     if(error){
-      // auto sign up if user doesn't exist
-      const su = await supa.auth.signUp({ email, password: pw });
+      const su = await s.auth.signUp({ email, password: pw });
       if(su.error) throw su.error;
+      if(!su.data.session){
+        errEl.textContent = '帳號已建立，請再按一次「登入」';
+        errEl.style.display = 'block';
+        return;
+      }
       data = su.data;
     }
     if(data.user){
+      cloudUser = data.user;
       localStorage.setItem('lumi_email', email);
       document.getElementById('gate').style.display = 'none';
-      await pullFromCloud();
+      await cloudPull();
       refreshAll();
+      toast('已同步');
     }
   } catch(e){
     errEl.textContent = e.message || '登入失敗';
@@ -124,57 +146,125 @@ async function doLogin(){
   }
 }
 
-async function pullFromCloud(){
-  try {
-    const { data: tasks } = await supa.from('tasks').select('*').order('created_at',{ascending:false});
-    if(tasks && tasks.length){
-      // merge: cloud tasks override local by id
-      const local = appData.tasks || [];
-      const cloudMap = {};
-      tasks.forEach(t=> cloudMap[t.id] = t);
-      local.forEach(t=> { if(!cloudMap[t.id]) cloudMap[t.id] = t; });
-      appData.tasks = Object.values(cloudMap);
-    }
-    const { data: journals } = await supa.from('journals').select('*');
-    if(journals && journals.length){
-      const jMap = appData.journals || {};
-      journals.forEach(j=> { jMap[j.date] = j.content || ''; });
-      appData.journals = jMap;
-    }
-    save();
-  } catch(e){ console.warn('pull fail', e); }
+/* ---------- pull: cloud -> device ---------- */
+function localHasData(){
+  return ((appData.tasks||[]).length > 0)
+      || (Object.keys(appData.journals||{}).length > 0);
+}
+function adoptCloud(cloud){
+  const keepTheme = appData.settings && appData.settings.theme;
+  appData = Object.assign({}, appData, cloud);
+  appData.settings = Object.assign({}, cloud.settings||{}, {
+    theme: keepTheme || (cloud.settings||{}).theme
+  });
+  saveLocalOnly();
 }
 
-async function pushToCloud(){
-  try {
-    const { data: { user } } = await supa.auth.getUser();
-    if(!user) return;
-    // push tasks that have cloud ids
-    for(const t of (appData.tasks||[])){
-      if(t._new){
-        const { data, error } = await supa.from('tasks').insert({
-          user_id: user.id, title: t.title||'', category_id: t.category||'',
-          completed: !!t.done, date: t.date||null, time: t.time||'',
-          repeat: t.repeat||'none', subtasks: t.subtasks||[], tags: t.tags||[]
-        }).select().single();
-        if(data){ t.id = data.id; t._new = false; }
-      }
+async function cloudPull(){
+  const s = ensureSupa();
+  if(!s) return false;
+  try{
+    const { data, error } = await s.from('lumi_snapshots')
+      .select('payload, updated_at').maybeSingle();
+    if(error) throw error;
+
+    // no cloud copy yet -> upload this device (only if it actually has data)
+    if(!data){
+      if(localHasData()) await cloudPushNow();
+      return true;
     }
-  } catch(e){ console.warn('push fail', e); }
+
+    const cloud = data.payload || {};
+    const cloudHasData = ((cloud.tasks||[]).length > 0)
+                      || (Object.keys(cloud.journals||{}).length > 0);
+
+    // empty device must never overwrite a cloud copy that has data
+    if(!localHasData() && cloudHasData){
+      adoptCloud(cloud);
+      return true;
+    }
+
+    const cloudAt = new Date(data.updated_at).getTime();
+    const localAt = appData.updatedAt || 0;
+    if(cloudAt > localAt){
+      adoptCloud(cloud);
+      return true;
+    }
+    await cloudPushNow();          // this device is newer
+    return true;
+  }catch(e){
+    console.warn('pull failed', e);
+    return false;
+  }
 }
 
+/* ---------- push: device -> cloud (debounced) ---------- */
+function cloudPush(){
+  if(!ensureSupa()) return;
+  if(pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(()=>{ cloudPushNow(); }, 1200);
+}
+
+async function cloudPushNow(){
+  const s = ensureSupa();
+  if(!s) return false;
+  if(pushing){ pendingPush = true; return false; }
+  pushing = true;
+  try{
+    let user = cloudUser;
+    if(!user){
+      const r = await s.auth.getUser();
+      user = r.data && r.data.user;
+    }
+    if(!user) return false;
+    cloudUser = user;
+    const payload = JSON.parse(JSON.stringify(appData));
+    const { error } = await s.from('lumi_snapshots').upsert({
+      user_id: user.id,
+      payload: payload,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+    if(error) throw error;
+    localStorage.setItem('lumi_last_sync', new Date().toISOString());
+    return true;
+  }catch(e){
+    console.warn('push failed', e);
+    return false;
+  }finally{
+    pushing = false;
+    if(pendingPush){ pendingPush = false; cloudPush(); }
+  }
+}
+
+/* ---------- startup ---------- */
 (async function initAuth(){
-  const { data: { user } } = await supa.auth.getUser();
-  if(!user){
-    document.getElementById('gate').style.display = 'flex';
+  const gateEl = document.getElementById('gate');
+  const showGate = ()=>{
+    gateEl.style.display = 'flex';
     const savedEmail = localStorage.getItem('lumi_email');
-    if(savedEmail) document.getElementById('loginEmail').value = savedEmail;
-    document.getElementById('loginPw').focus();
-  } else {
-    // mark existing local tasks for push (first-time cloud sync)
-    (appData.tasks||[]).forEach(t=>{ if(!String(t.id).startsWith('task_')) t._new = true; });
-    await pullFromCloud();
+    if(savedEmail && !document.getElementById('loginEmail').value){
+      document.getElementById('loginEmail').value = savedEmail;
+    }
+  };
+  if(!ensureSupa()){
+    // SDK may still be loading (slow network) - wait briefly then retry
+    for(let i=0;i<20 && !ensureSupa();i++) await new Promise(r=>setTimeout(r,250));
+    if(!ensureSupa()){ showGate(); return; }
+  }
+  try{
+    const res = await Promise.race([
+      ensureSupa().auth.getSession(),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), 8000))
+    ]);
+    const session = res && res.data && res.data.session;
+    if(!session){ showGate(); return; }
+    cloudUser = session.user;
+    gateEl.style.display = 'none';   // we have a session: go straight in
+    await cloudPull();
     refreshAll();
+  }catch(e){
+    console.warn('auth init failed', e);
+    showGate();
   }
 })();
 </script>
@@ -651,7 +741,8 @@ function load(){
   document.getElementById('sUrl').value = appData.settings.supabaseUrl||'';
   document.getElementById('sKey').value = appData.settings.supabaseKey||'';
 }
-function save(){ try{ localStorage.setItem('lumi_v9', JSON.stringify(appData)); }catch(e){ toast('儲存失敗', e.message); } pushToCloud(); }
+function saveLocalOnly(){ try{ localStorage.setItem('lumi_v9', JSON.stringify(appData)); }catch(e){ toast('儲存失敗', e.message); } }
+function save(){ appData.updatedAt = Date.now(); saveLocalOnly(); cloudPush(); }
 window.addEventListener('beforeunload', save);
 
 function fmtKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
