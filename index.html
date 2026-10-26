@@ -44,6 +44,10 @@
   .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:6px 12px;}
   input,select,textarea{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:8px 10px;font-size:14px;outline:none;width:100%;}
   input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+  .icon-btn{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt);transition:all .15s;}
+  .icon-btn:hover{background:var(--panel2);transform:scale(1.05);}
+  .icon-btn:active{transform:scale(0.95);}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:11px;display:inline-flex;align-items:center;gap:3px;}
   .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;background:var(--panel2);border:1px solid var(--line);margin:2px;color:var(--txt);}
   .icon-btn{width:36px;height:36px;border-radius:10px;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt);}
   .icon-btn:hover{background:var(--panel2);}
@@ -85,6 +89,7 @@
     <button class="icon-btn" onclick="openSearch()" title="搜尋"><i data-lucide="search" class="w-4 h-4"></i></button>
     <button class="icon-btn" onclick="openSettings()" title="設定"><i data-lucide="settings" class="w-4 h-4"></i></button>
     <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切換日夜"><i data-lucide="sun-moon" class="w-4 h-4"></i></button>
+    <button class="icon-btn" onclick="toggleLang()" title="切換語言"><i data-lucide="languages" class="w-4 h-4"></i></button>
   </div>
 </header>
 
@@ -352,8 +357,9 @@
 /* ==================== DATA ==================== */
 const DEFAULT_CATS = [
   {id:'payment',name:'💳 繳費',color:'#C89C5F'},
+  {id:'payment',name:'💳 付款',color:'#D4956B'},
   {id:'housework',name:'🧹 家務',color:'#8CA3A6'},
-  {id:'shopping',name:'🛒 購物',color:'#B8B292'},
+  {id:'shopping',name:'🛒 購物',color:'#C4A882'},
   {id:'work',name:'💼 工作',color:'#7B9BC4'},
   {id:'health',name:'🧘 健康',color:'#C48BA0'},
   {id:'other',name:'📌 其他',color:'#999'}
@@ -373,6 +379,48 @@ let appData = {
 let currentDate = new Date();
 let selectedKey = fmtKey(new Date());
 let calView = 'month';
+
+// ==================== i18n ====================
+const I18N = {
+  zh: {
+    '新增任務':'新增任務','Backlog':'Backlog','全部':'全部','今天':'今天',
+    '清單':'清單','月':'月','週':'週','3日':'3日','日':'日','年':'年',
+    '待辦事項':'待辦事項','日誌':'日誌','分類':'分類','標籤':'標籤',
+    '提醒':'提醒','子任務':'子任務','備註':'備註','地址':'地址',
+    '儲存':'儲存','取消':'取消','刪除':'刪除','編輯':'編輯',
+    '標題':'標題','日期':'日期','時間':'時間','金額':'金額','幣別':'幣別',
+    '不重複':'不重複','每天':'每天','每週':'每週','每月':'每月','每年':'每年',
+    '準時':'準時','15分前':'15分前','30分前':'30分前','1小時前':'1小時前',
+    '橫幅':'橫幅','鬧聲':'鬧聲','兩者':'兩者',
+    '問我任何事...':'問我任何事...','送':'送','關閉':'關閉',
+    '無排程事項':'無排程事項','已完成':'已完成',
+    '工作':'工作','付款':'付款','家事':'家事','採買':'採買','健康':'健康','其他':'其他'
+  },
+  en: {
+    '新增任務':'New Task','Backlog':'Backlog','全部':'All','今天':'Today',
+    '清單':'List','月':'Month','週':'Week','3日':'3 Day','日':'Day','年':'Year',
+    '待辦事項':'Tasks','日誌':'Journal','分類':'Category','標籤':'Tags',
+    '提醒':'Reminders','子任務':'Subtasks','備註':'Notes','地址':'Location',
+    '儲存':'Save','取消':'Cancel','刪除':'Delete','編輯':'Edit',
+    '標題':'Title','日期':'Date','時間':'Time','金額':'Amount','幣別':'Currency',
+    '不重複':'None','每天':'Daily','每週':'Weekly','每月':'Monthly','每年':'Yearly',
+    '準時':'At time','15分前':'15 min before','30分前':'30 min before','1小時前':'1 hour before',
+    '橫幅':'Banner','鬧聲':'Alarm','兩者':'Both',
+    '問我任何事...':'Ask me anything...','送':'Send','關閉':'Close',
+    '無排程事項':'No tasks','已完成':'Done',
+    '工作':'Work','付款':'Payment','家事':'Chores','採買':'Shopping','健康':'Health','其他':'Other'
+  }
+};
+function t(key){
+  const lang = appData.settings.lang || 'zh';
+  return (I18N[lang] && I18N[lang][key]) || key;
+}
+function toggleLang(){
+  appData.settings.lang = (appData.settings.lang==='en') ? 'zh' : 'en';
+  save();
+  toast(appData.settings.lang==='en'?'English 🌐':'中文 🌐');
+  setTimeout(()=>location.reload(), 300);
+}
 
 const HOL = {
   TW:{'01-01':'元旦','02-28':'和平紀念日','04-04':'兒童節','05-01':'勞動節','09-03':'軍人節','10-10':'國慶日','10-25':'臺灣光復節','12-25':'聖誕節'},
