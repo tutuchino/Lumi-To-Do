@@ -5,7 +5,7 @@
    - CDN 依賴（tailwind / lucide / supabase-js / lunar）：stale-while-revalidate
    - 其他（Supabase API 等）：直接走網路，不介入
 */
-const VER = 'v22';
+const VER = 'v23';
 const CACHE = 'lumi-shell-' + VER;
 const SHELL = [
   './',

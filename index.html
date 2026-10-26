@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- LUMI v22 -->
+<!-- LUMI v23 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <title>雲小朵 Lumi · 待辦</title>
 <meta name="theme-color" content="#EBDEC2">
@@ -540,15 +540,19 @@ async function cloudPushNow(){
   </div>
   <div id="lumiChat" class="h-56 overflow-y-auto scroll-thin px-3 flex flex-col gap-2 border-t" style="border-color:var(--line)"></div>
   <div class="p-3 border-t" style="border-color:var(--line)">
-    <div id="voiceIdle" class="flex gap-2" style="touch-action:none;user-select:none"
-      ontouchstart="pressStart(event)" ontouchend="pressEnd(event)" ontouchmove="pressMove(event)">
-      <button class="icon-btn" id="micBtn" type="button" title="按住講話"><i data-lucide="mic" class="w-4 h-4"></i></button>
+    <div id="voiceIdle" class="flex gap-2">
+      <button class="icon-btn" id="micBtn" type="button" title="按住講話" style="touch-action:none"><i data-lucide="mic" class="w-4 h-4"></i></button>
       <input id="lumiInput" class="flex-1" placeholder="按住此處說話，或打字..." onkeydown="if(event.key==='Enter')sendLumi()">
       <button class="btn" id="lumiSendBtn" onclick="sendLumi()">送</button>
     </div>
-    <div id="voiceListening" class="hidden text-center py-3" style="background:var(--panel2);border-radius:12px">
-      <div style="font-size:14px">🎤 正在聽…<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
-      <div class="text-[10px] mt-1" style="color:var(--muted)">放開自動送出</div>
+    <div id="voiceListening" class="hidden py-2 px-2" style="background:var(--panel2);border-radius:12px">
+      <div class="text-center" style="font-size:14px">🎤 正在聽…<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
+      <div id="voicePreview" class="text-xs mt-1 text-center" style="color:var(--txt);min-height:16px"></div>
+      <div id="voiceHint" class="text-[10px] mt-1 text-center" style="color:var(--muted)">說完按「完成」，或按「取消」</div>
+      <div class="flex gap-2 justify-center mt-2">
+        <button class="chip" type="button" onclick="cancelVoice()">取消</button>
+        <button class="btn !px-4 !py-1" type="button" onclick="finishVoice()">完成</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1369,7 +1373,17 @@ async function lumiCall(payload){
   if(getQuota()<=0) throw new Error('今日 AI 額度已用完');
   const url=`${appData.settings.supabaseUrl}/functions/v1/${appData.settings.edgeFn||'ai-proxy'}`;
   const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+appData.settings.supabaseKey},body:JSON.stringify(payload)});
-  if(!r.ok) throw new Error('AI 錯誤 '+r.status);
+  if(!r.ok){
+    let msg = 'AI 暫時無法使用（'+r.status+'）', code = '';
+    try{
+      const j = await r.json();
+      if(j && j.error) msg = j.error;
+      if(j && j.code) code = j.code;
+    }catch(_){}
+    const err = new Error(msg);
+    err.code = code;
+    throw err;
+  }
   bumpQuota();
   return await r.json();
 }
@@ -1387,7 +1401,7 @@ function appendChat(role,text,withSpeaker){
   if(role==='user') d.className='flex justify-end';
   d.innerHTML = role==='user'
     ? `<div class="glass2 px-3 py-2 max-w-[85%]" style="background:var(--accent);color:#fff">${esc(text)}</div>`
-    : `<div class="glass2 px-3 py-2 max-w-[90%] relative">${esc(text).replace(/\n/g,'<br>')}${withSpeaker?'<button onclick="speakText(this)" style="position:absolute;bottom:4px;right:4px;background:none;border:none;cursor:pointer;font-size:13px;opacity:0.5" title="朗讀"><i data-lucide="volume-2" class="w-3 h-3"></i></button>':''}</div>`;
+    : `<div class="glass2 px-3 py-2 max-w-[90%] relative">${esc(text).replace(/\{\{D:(\d{4}-\d{2}-\d{2})\}\}/g, (m,d)=>'<a href=\"#\" onclick=\"jumpJournal(\''+d+'\');return false;\" style=\"color:var(--accent);text-decoration:underline\">'+d+'</a>').replace(/\n/g,'<br>')}${withSpeaker?'<button onclick="speakText(this)" style="position:absolute;bottom:4px;right:4px;background:none;border:none;cursor:pointer;font-size:13px;opacity:0.5" title="朗讀"><i data-lucide="volume-2" class="w-3 h-3"></i></button>':''}</div>`;
   c.appendChild(d); c.scrollTop=c.scrollHeight;
   try{ lucide.createIcons(); }catch(e){}
 }
@@ -1440,8 +1454,8 @@ async function sendLumi(){
     if(actions.length) save();
     refreshAll();
     let reply=r.reply||'(無回應)';
-    reply=reply.replace(/(\d{4}-\d{2}-\d{2})/g,'<a href="#" onclick="jumpJournal(\'$1\');return false;" style="color:var(--accent);text-decoration:underline">$1</a>');
-    if(done.length) reply += '<div class="mt-2 text-[11px] opacity-70 border-t pt-1" style="border-color:var(--line)">'+done.join('<br>')+'</div>';
+    reply = reply.replace(/(\d{4}-\d{2}-\d{2})/g, '{{D:$1}}');
+    if(done.length) reply += '\n\n' + done.join('\n');
     appendChat('lumi', reply, true);
   }catch(e){ appendChat('lumi','⚠️ '+e.message); }
   finally{ setWriting(false); }
@@ -1449,50 +1463,154 @@ async function sendLumi(){
 function askAI(q){ openLumi(); document.getElementById('lumiInput').value=q; sendLumi(); }
 
 // Hold-to-talk voice (WeChat/Doubao style) — long press the input bar
-let rec=null, recActive=false, lpTimer=null, lpFired=false;
-function pressStart(e){
-  lpFired=false;
-  lpTimer=setTimeout(()=>{ lpFired=true; startVoice(e); }, 350);
+let rec = null, recActive = false;
+let voiceHoldStart = 0, voiceMaxTimer = null, voiceHeard = '';
+
+function voiceSupported(){
+  return ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
 }
-function pressMove(e){
-  if(lpFired) return;
-  clearTimeout(lpTimer); lpTimer=null;
+
+function initVoiceUI(){
+  const btn = document.getElementById('micBtn');
+  if(!btn) return;
+
+  const down = e => {
+    e.preventDefault();
+    try{ document.getElementById('lumiInput').blur(); }catch(_){}
+    voiceHoldStart = Date.now();
+    startVoice();
+  };
+  const up = e => {
+    if(!recActive) return;
+    // 按住超過 600ms 放開 → 送出；快速點一下 → 保持收音（免持模式）
+    if(Date.now() - voiceHoldStart >= 600) finishVoice();
+  };
+
+  btn.addEventListener('pointerdown', e=>{
+    try{ btn.setPointerCapture(e.pointerId); }catch(_){}
+    down(e);
+  });
+  btn.addEventListener('pointerup', up);
+  btn.addEventListener('pointercancel', e=>{ cancelVoice('中斷'); });
+  btn.addEventListener('touchstart', e=>{ if(e.cancelable) e.preventDefault(); }, {passive:false});
+  btn.addEventListener('touchend', e=>{ e.preventDefault(); up(e); }, {passive:false});
+  btn.addEventListener('touchcancel', e=>{ cancelVoice('中斷'); });
+  btn.addEventListener('contextmenu', e=>e.preventDefault());
+  btn.addEventListener('mousedown', e=>{ if(e.button===0) down(e); });
+  btn.addEventListener('mouseup', up);
+  btn.addEventListener('mouseleave', e=>{ if(recActive && Date.now()-voiceHoldStart>=600) finishVoice(); });
 }
-function pressEnd(e){
-  clearTimeout(lpTimer); lpTimer=null;
-  if(recActive){ stopVoice(); }
+
+function voiceShow(on){
+  const idle = document.getElementById('voiceIdle');
+  const lis  = document.getElementById('voiceListening');
+  if(!idle || !lis) return;
+  idle.classList.toggle('hidden', on);
+  lis.classList.toggle('hidden', !on);
+  const img = document.getElementById('lumiImg');
+  if(img){
+    if(on){ img.style.transition='all .2s'; img.style.width='110px'; img.style.height='130px'; img.style.opacity='0.6'; }
+    else { img.style.width=''; img.style.height=''; img.style.opacity=''; }
+  }
+  try{ lucide.createIcons(); }catch(_){}
 }
-function startVoice(e){
+
+function resetVoiceUI(){
+  recActive = false;
+  clearTimeout(voiceMaxTimer); voiceMaxTimer = null;
+  try{ rec && rec.stop(); }catch(_){}
+  rec = null;
+  voiceShow(false);
+}
+
+function startVoice(){
   if(recActive) return;
-  if(!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)){ toast('此瀏覽器不支援語音，請用 Chrome'); return; }
+  if(!voiceSupported()){
+    toast('此瀏覽器不支援語音','請用 Chrome 或 Edge');
+    return;
+  }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   rec = new SR();
-  rec.lang='zh-TW'; rec.interimResults=true;
-  const img=document.getElementById('lumiImg');
-  if(img){ img.style.transition='all .2s'; img.style.width='110px'; img.style.height='130px'; img.style.opacity='0.6'; }
-  document.getElementById('voiceIdle').classList.add('hidden');
-  document.getElementById('voiceListening').classList.remove('hidden');
-  const inp=document.getElementById('lumiInput');
-  rec.onresult=ev=>{
-    let txt='';
-    for(const r of ev.results) txt+=r[0].transcript;
-    inp.value=txt;
+  rec.lang = isEN() ? 'en-US' : 'zh-TW';
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+
+  voiceHeard = '';
+  const preview = document.getElementById('voicePreview');
+  if(preview) preview.textContent = '';
+
+  const inp = document.getElementById('lumiInput');
+  if(inp) inp.value = '';
+
+  rec.onresult = ev => {
+    let txt = '';
+    for(let i=0; i<ev.results.length; i++) txt += ev.results[i][0].transcript;
+    voiceHeard = txt;
+    if(inp) inp.value = txt;
+    if(preview) preview.textContent = txt.slice(-60);
   };
-  rec.onerror=ev=>{ toast('🎤 '+ev.error); stopVoice(); };
-  rec.onend=()=>{ if(recActive) stopVoice(); };
-  try{ rec.start(); recActive=true; }catch(err){ toast('無法啟動麥克風'); }
+  rec.onerror = ev => {
+    const map = {
+      'not-allowed':'麥克風權限被拒，請到瀏覽器設定允許',
+      'service-not-allowed':'麥克風權限被拒，請到瀏覽器設定允許',
+      'no-speech':'沒有聽到聲音',
+      'audio-capture':'找不到麥克風',
+      'network':'網路不穩，語音辨識失敗',
+      'aborted':'已取消'
+    };
+    const msg = map[ev.error] || ('語音錯誤：' + ev.error);
+    resetVoiceUI();
+    if(ev.error !== 'aborted' && ev.error !== 'no-speech') toast('🎤 ' + msg);
+    else if(ev.error === 'no-speech') toast('🎤 沒有聽到聲音');
+  };
+  rec.onend = () => {
+    // 瀏覽器自己結束（例如靜音判定），若仍在收音狀態就當作完成
+    if(recActive){
+      recActive = false;
+      voiceShow(false);
+      const v = (document.getElementById('lumiInput').value || '').trim();
+      if(v) sendLumi();
+    }
+  };
+
+  recActive = true;                 // 先標記，失敗才不會卡住
+  voiceShow(true);
+  try{
+    rec.start();
+  }catch(err){
+    resetVoiceUI();
+    toast('無法啟動麥克風', String(err && err.message || err));
+    return;
+  }
+  // 上限 30 秒，避免一直開著
+  voiceMaxTimer = setTimeout(()=>{ if(recActive) finishVoice(); }, 30000);
 }
-function stopVoice(){
+
+function finishVoice(){
   if(!recActive) return;
-  recActive=false;
-  try{ rec&&rec.stop(); }catch(e){}
-  const img=document.getElementById('lumiImg');
-  if(img){ img.style.width=''; img.style.height=''; img.style.opacity=''; }
-  document.getElementById('voiceListening').classList.add('hidden');
-  document.getElementById('voiceIdle').classList.remove('hidden');
-  const v=document.getElementById('lumiInput').value.trim();
+  recActive = false;
+  clearTimeout(voiceMaxTimer); voiceMaxTimer = null;
+  try{ rec && rec.stop(); }catch(_){}
+  rec = null;
+  voiceShow(false);
+  const v = (document.getElementById('lumiInput').value || voiceHeard || '').trim();
   if(v) sendLumi();
+  else toast('沒有辨識到文字','再說一次試試');
 }
+
+function cancelVoice(reason){
+  clearTimeout(voiceMaxTimer); voiceMaxTimer = null;
+  const was = recActive;
+  recActive = false;
+  try{ rec && rec.abort(); }catch(_){}
+  rec = null;
+  voiceShow(false);
+  const inp = document.getElementById('lumiInput');
+  if(inp) inp.value = '';
+  if(reason && was) toast('已取消');
+}
+
 // TTS read aloud
 function speakText(btn){
   const box = btn.parentElement;
@@ -1632,6 +1750,7 @@ function refreshAll(){ renderCalendar(); renderAll(); renderBacklog(); renderSta
 function relang(){ try{ lucide.createIcons(); applyLang(); }catch(e){} }
 window.addEventListener('DOMContentLoaded',()=>{
   load();
+  try{ initVoiceUI(); }catch(e){ console.warn('voice init', e); }
   renderAlmanac();
   renderCats();
   refreshAll();

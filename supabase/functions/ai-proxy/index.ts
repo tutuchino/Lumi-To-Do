@@ -64,7 +64,9 @@ Deno.serve(async (req) => {
     await sb.from("ai_usage_log").upsert({ date: today, count: used + 1 }, { onConflict: "date" });
     return json(result, 200);
   } catch (e) {
-    return json({ error: String(e.message || e) }, 500);
+    const code = (e as any).code || "provider";
+    const status = code === "quota" ? 429 : (code === "credit" ? 402 : 500);
+    return json({ error: String(e.message || e), code }, status);
   }
 });
 
@@ -75,12 +77,27 @@ function json(obj, status = 200) {
   });
 }
 
+class ProviderError extends Error {
+  code: string;
+  constructor(message: string, code = "provider") {
+    super(message);
+    this.code = code;
+  }
+}
+
 // ---------- Provider chain: OpenRouter -> Cloudflare -> Gemini ----------
 async function callOpenRouter(messages, model = "openrouter/free") {
   const key = Deno.env.get("OPENROUTER_API_KEY");
   if (!key) throw new Error("no openrouter key");
   const candidates = model === "openrouter/free"
-    ? ["nvidia/nemotron-3-ultra-550b-a55b:free", "poolside/laguna-s-2.1:free", "cohere/north-mini-code:free", "recursive/flint-v1.0:free"]
+    ? [
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "google/gemma-4-31b-it:free",
+        "cohere/north-mini-code:free",
+        "poolside/laguna-s-2.1:free",
+        "recursive/flint-v1.0:free",
+      ]
     : [model];
   let lastErr;
   for (const m of candidates) {
@@ -95,7 +112,11 @@ async function callOpenRouter(messages, model = "openrouter/free") {
         },
         body: JSON.stringify({ model: m, messages, temperature: 0.4 }),
       });
-      if (!r.ok) { lastErr = new Error("openrouter " + r.status + " " + m); continue; }
+      if (!r.ok) {
+        const code = r.status === 429 ? "rate_limit" : (r.status === 402 ? "credit" : "provider");
+        lastErr = new ProviderError("openrouter " + r.status + " " + m, code);
+        continue;
+      }
       const d = await r.json();
       const out = d.choices?.[0]?.message?.content;
       if (out && out.trim()) return out;
@@ -107,7 +128,7 @@ async function callOpenRouter(messages, model = "openrouter/free") {
 async function callCloudflare(messages) {
   const acct = Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
   const token = Deno.env.get("CLOUDFLARE_API_TOKEN");
-  if (!acct || !token) throw new Error("no cloudflare creds");
+  if (!acct || !token) throw new ProviderError("no cloudflare creds", "unavailable");
   // Small open model, fits free neuron allocation
   const r = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${acct}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
@@ -127,7 +148,7 @@ async function callCloudflare(messages) {
 
 async function callGemini(messages) {
   const key = Deno.env.get("GEMINI_API_KEY");
-  if (!key) throw new Error("no gemini key");
+  if (!key) throw new ProviderError("no gemini key", "unavailable");
   const sys = messages.find(m => m.role === "system")?.content || "";
   const convo = messages.filter(m => m.role !== "system").map(m => ({
     role: m.role === "assistant" ? "model" : "user",
@@ -151,15 +172,25 @@ async function callGemini(messages) {
 
 async function withFailover(messages) {
   const errors = [];
+  const codes = [];
   for (const fn of [callOpenRouter, callCloudflare, callGemini]) {
     try {
       const out = await fn(messages);
       if (out && out.trim()) return { text: out, provider: fn.name };
     } catch (e) {
       errors.push(`${fn.name}: ${e.message}`);
+      codes.push((e as any).code || "provider");
     }
   }
-  throw new Error("所有 AI 供應商都失敗：" + errors.join(" | "));
+  // 未設定憑證的供應商不算失敗；只要有實際可用卻被限流，就明確告知額度問題
+  const effective = codes.filter(c => c !== "unavailable");
+  if (effective.length && effective.every(c => c === "rate_limit" || c === "credit")) {
+    throw new ProviderError(
+      "AI 免費額度今日已用完，明天會自動恢復。現在可以先直接在 App 手動新增任務。",
+      "quota"
+    );
+  }
+  throw new ProviderError("所有 AI 供應商都失敗：" + errors.join(" | "), "provider");
 }
 
 // ---------- Actions ----------
