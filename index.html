@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- LUMI v18 -->
+<!-- LUMI v19 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <title>雲小朵 Lumi · 待辦</title>
 <meta name="theme-color" content="#EBDEC2">
@@ -1338,10 +1338,21 @@ async function sendLumi(){
   inp.value='';
   appendChat('user',txt);
   setWriting(true);
+  // send every journal entry (sorted by date), capped by total characters
+  const jarEntries = Object.entries(appData.journals||{})
+    .filter(([k,v])=>v && String(v).trim())
+    .sort((a,b)=>a[0].localeCompare(b[0]));
+  const jarCapped = {}; let budget = 20000;
+  for(const [k,v] of jarEntries){
+    const s = String(v);
+    if(budget <= 0) break;
+    const take = s.length > budget ? s.slice(0,budget) : s;
+    jarCapped[k] = take; budget -= take.length;
+  }
   const ctx={
     today: fmtKey(new Date()),
-    tasks: appData.tasks.map(t=>({id:t.id,title:t.title,date:t.date,amount:t.amount,currency:t.currency,category:t.categoryId,completed:t.completed,tags:t.tags,isBacklog:t.isBacklog})),
-    journals: Object.fromEntries(Object.entries(appData.journals).filter(([k,v])=>v).slice(-30))
+    tasks: appData.tasks.map(t=>({id:t.id,title:t.title,date:t.date,time:t.time,amount:t.amount,currency:t.currency,category:t.categoryId,completed:t.completed,tags:t.tags,notes:t.notes,isBacklog:t.isBacklog})),
+    journals: jarCapped
   };
   try{
     const r=await lumiCall({action:'chat',message:txt,context:ctx});
