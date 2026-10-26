@@ -455,13 +455,12 @@ async function pushToCloud(){
 <script>
 /* ==================== DATA ==================== */
 const DEFAULT_CATS = [
-  {id:'payment',name:'💳 繳費',color:'#C89C5F'},
-  {id:'payment',name:'💳 付款',color:'#D4956B'},
-  {id:'housework',name:'🧹 家務',color:'#8CA3A6'},
-  {id:'shopping',name:'🛒 購物',color:'#C4A882'},
-  {id:'work',name:'💼 工作',color:'#7B9BC4'},
-  {id:'health',name:'🧘 健康',color:'#C48BA0'},
-  {id:'other',name:'📌 其他',color:'#999'}
+  {id:'payment',name:'付款',icon:'credit-card',color:'#D4956B'},
+  {id:'housework',name:'家務',icon:'sparkles',color:'#8CA3A6'},
+  {id:'shopping',name:'購物',icon:'shopping-cart',color:'#C4A882'},
+  {id:'work',name:'工作',icon:'briefcase',color:'#7B9BC4'},
+  {id:'health',name:'健康',icon:'heart-pulse',color:'#C48BA0'},
+  {id:'other',name:'其他',icon:'paperclip',color:'#999'}
 ];
 let appData = {
   v:9,
@@ -747,7 +746,7 @@ function renderSelected(){
 
 /* ==================== TASK UI ==================== */
 function taskHTML(t){
-  const cat = appData.categories.find(c=>c.id===t.categoryId)||{name:'📌',color:'#999'};
+  const cat = appData.categories.find(c=>c.id===t.categoryId)||{name:'其他',icon:'paperclip',color:'#999'};
   const subs = (t.subtasks||[]).map((s,i)=>`
     <div class="subtask-row flex items-center gap-1 text-[11px] mt-0.5">
       <input type="checkbox" ${s.done?'checked':''} onchange="toggleSub('${t.id}',${i})">
@@ -763,8 +762,8 @@ function taskHTML(t){
       </button>
       <div class="flex-1">
         <div class="text-sm">${esc(t.title)}
-          <span class="chip text-[9px]" style="background:${cat.color}33;border-color:${cat.color}">${cat.name}</span>
-          ${rm?`<span class="chip text-[9px]">🔔${rm}</span>`:''}
+          <span class="chip text-[9px]" style="background:${cat.color}33;border-color:${cat.color}"><i data-lucide="${cat.icon||'paperclip'}" class="w-2.5 h-2.5"></i> ${cat.name}</span>
+          ${rm?`<span class="chip text-[9px]"><i data-lucide="bell" class="w-2.5 h-2.5"></i>${rm}</span>`:''}
           ${t.amount?`<span class="chip text-[9px]" style="color:var(--accent)">$${t.amount}</span>`:''}
         </div>
         ${tags?`<div class="mt-0.5">${tags}</div>`:''}
@@ -832,10 +831,10 @@ function onRepeatChange(v){
   document.getElementById('lunarDayBox').classList.toggle('hidden', !(v==='lunar_yearly'||v==='lunar_monthly'));
 }
 function addCategory(){
-  const name = prompt('分類名稱（可加 emoji）：');
+  const name = prompt('分類名稱：');
   if(!name) return;
   const id = 'cat_'+Date.now();
-  appData.categories.push({id, name, color:'#'+Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0')});
+  appData.categories.push({id, name, icon:'tag', color:'#'+Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0')});
   save(); renderCats();
   document.getElementById('tCat').value = id;
 }
