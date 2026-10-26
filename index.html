@@ -93,7 +93,8 @@
   <section id="tab-cal">
     <!-- View switcher -->
     <div class="flex gap-1 mb-2 text-xs">
-      <button class="chip view-btn tab-active" data-view="month" onclick="setView('month')">月</button>
+      <button class="chip view-btn" data-view="list" onclick="setView('list')">清單</button>
+      <button class="chip view-btn" data-view="month" onclick="setView('month')">月</button>
       <button class="chip view-btn" data-view="week" onclick="setView('week')">週</button>
       <button class="chip view-btn" data-view="day3" onclick="setView('day3')">3日</button>
       <button class="chip view-btn" data-view="day" onclick="setView('day')">日</button>
@@ -226,6 +227,7 @@
           <option value="weekly">每週</option>
           <option value="monthly">每月</option>
           <option value="yearly">每年（國曆）</option>
+          <option value="lunar_monthly">每月（農曆）</option>
           <option value="lunar_yearly">每年（農曆）</option>
           <option value="custom_days">每隔 N 天</option>
         </select>
@@ -310,7 +312,7 @@
   </div>
   <div id="lumiChat" class="h-56 overflow-y-auto scroll-thin px-3 flex flex-col gap-2 border-t" style="border-color:var(--line)"></div>
   <div class="p-3 flex gap-2 border-t" style="border-color:var(--line)">
-    <button class="icon-btn" onclick="voiceInput()" title="語音輸入"><i data-lucide="mic" class="w-4 h-4"></i></button>
+    <button class="icon-btn" id="micBtn" onmousedown="startVoice(this)" onmouseup="stopVoice(this)" onmouseleave="stopVoice(this)" title="按住講話"><i data-lucide="mic" class="w-4 h-4"></i></button>
     <input id="lumiInput" class="flex-1" placeholder="問我任何事..." onkeydown="if(event.key==='Enter')sendLumi()">
     <button class="btn" onclick="sendLumi()">送</button>
   </div>
@@ -418,6 +420,16 @@ function hols(m,d){
 function renderCalendar(){
   const area = document.getElementById('calArea');
   const y = currentDate.getFullYear(), m = currentDate.getMonth();
+  if(calView==='list'){
+    document.getElementById('calTitle').innerText = '即將到來';
+    const today = fmtKey(new Date());
+    const upcoming = appData.tasks.filter(t=>!t.isBacklog && !t.completed && t.date >= today)
+      .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    area.innerHTML = upcoming.length
+      ? upcoming.map(t=>`<div class="glass2 p-2 mb-1 flex justify-between text-sm"><span>${esc(t.title)} <span class="text-[10px] opacity-60">${t.date} ${t.time||''}</span></span><span class="chip">${(t.tags||[]).join(', ')}</span></div>`).join('')
+      : '<p class="text-center text-xs py-6" style="color:var(--muted)">沒有即將到來的任務</p>';
+    renderSelected(); return;
+  }
   if(calView==='month'){
     document.getElementById('calTitle').innerText = `${y} 年 ${m+1} 月`;
     let html = '<div class="grid grid-cols-7 gap-1 text-center text-[10px] mb-1" style="color:var(--muted)"><div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div></div><div class="grid grid-cols-7 gap-1">';
@@ -485,7 +497,7 @@ function getTasksForDate(dk){
       if(t.repeat==='weekly' && td.getDay()===cd.getDay()) return true;
       if(t.repeat==='monthly' && td.getDate()===cd.getDate()) return true;
       if(t.repeat==='yearly' && td.getMonth()===cd.getMonth() && td.getDate()===cd.getDate()) return true;
-      if(t.repeat==='lunar_yearly'){
+      if(t.repeat==='lunar_yearly' || t.repeat==='lunar_monthly'){
         const cl = Solar.fromYmd(cd.getFullYear(),cd.getMonth()+1,cd.getDate()).getLunar();
         if(String(cl.getDay())===String(t.lunarDay)) return true;
       }
@@ -571,7 +583,7 @@ function closeTaskModal(){ document.getElementById('taskModal').classList.add('h
 function toggleDateBox(no){ document.getElementById('dateBox').style.opacity = no?0.3:1; }
 function onRepeatChange(v){
   document.getElementById('customDaysBox').classList.toggle('hidden', v!=='custom_days');
-  document.getElementById('lunarDayBox').classList.toggle('hidden', v!=='lunar_yearly');
+  document.getElementById('lunarDayBox').classList.toggle('hidden', !(v==='lunar_yearly'||v==='lunar_monthly'));
 }
 function addCategory(){
   const name = prompt('分類名稱（可加 emoji）：');
@@ -845,13 +857,13 @@ function setWriting(on){
   document.getElementById('lumiImg').classList.toggle('lumi-idle',!on);
   document.getElementById('lumiTyping').classList.toggle('hidden',!on);
 }
-function appendChat(role,text){
+function appendChat(role,text,withSpeaker){
   const c=document.getElementById('lumiChat');
   const d=document.createElement('div');
   if(role==='user') d.className='flex justify-end';
   d.innerHTML = role==='user'
     ? `<div class="glass2 px-3 py-2 max-w-[85%]" style="background:var(--accent);color:#fff">${esc(text)}</div>`
-    : `<div class="glass2 px-3 py-2 max-w-[90%]">${text}</div>`;
+    : `<div class="glass2 px-3 py-2 max-w-[90%]">${text}${withSpeaker?'<div class="mt-1 text-[10px]"><button class="chip" onclick="speakText(this)">🔊 朗讀</button></div>':''}</div>`;
   c.appendChild(d); c.scrollTop=c.scrollHeight;
 }
 async function sendLumi(){
@@ -861,25 +873,80 @@ async function sendLumi(){
   appendChat('user',txt);
   setWriting(true);
   const ctx={
-    tasks: appData.tasks.slice(0,50).map(t=>({title:t.title,date:t.date,amount:t.amount,currency:t.currency,category:t.categoryId,completed:t.completed,tags:t.tags})),
+    today: fmtKey(new Date()),
+    tasks: appData.tasks.map(t=>({id:t.id,title:t.title,date:t.date,amount:t.amount,currency:t.currency,category:t.categoryId,completed:t.completed,tags:t.tags,isBacklog:t.isBacklog})),
     journals: Object.fromEntries(Object.entries(appData.journals).filter(([k,v])=>v).slice(-30))
   };
   try{
     const r=await lumiCall({action:'chat',message:txt,context:ctx});
+    // Execute actions
+    const actions = r.actions||[];
+    const done = [];
+    for(const a of actions){
+      try{
+        if(a.op==='create_task'){
+          const id='task_'+Date.now()+Math.floor(Math.random()*1000);
+          appData.tasks.push({id, title:a.data.title||'(未命名)', date:a.data.date||ctx.today, time:a.data.time||'', categoryId:a.data.categoryId||'other', tags:a.data.tags||[], amount:a.data.amount||0, currency:'USD', isBacklog:!a.data.date, reminders:[], subtasks:[], completed:false});
+          done.push('✅ 新增任務：'+a.data.title);
+        } else if(a.op==='update_task'){
+          const t=appData.tasks.find(x=>x.id===a.id);
+          if(t){ Object.assign(t, a.data); done.push('✏️ 修改任務：'+t.title); }
+        } else if(a.op==='delete_task'){
+          const t=appData.tasks.find(x=>x.id===a.id);
+          if(t){ appData.tasks=appData.tasks.filter(x=>x.id!==a.id); done.push('🗑 刪除任務：'+t.title); }
+        } else if(a.op==='create_journal'){
+          appData.journals[a.date]=a.content||''; done.push('📖 寫入日誌：'+a.date);
+        } else if(a.op==='append_journal'){
+          appData.journals[a.date]=(appData.journals[a.date]||'')+'\n'+(a.content||''); done.push('📖 追加日誌：'+a.date);
+        }
+      }catch(e){}
+    }
+    if(actions.length) save();
+    refreshAll();
     let reply=r.reply||'(無回應)';
     reply=reply.replace(/(\d{4}-\d{2}-\d{2})/g,'<a href="#" onclick="jumpJournal(\'$1\');return false;" style="color:var(--accent);text-decoration:underline">$1</a>');
-    appendChat('lumi',reply);
+    if(done.length) reply += '<div class="mt-2 text-[11px] opacity-70 border-t pt-1" style="border-color:var(--line)">'+done.join('<br>')+'</div>';
+    appendChat('lumi', reply, true);
   }catch(e){ appendChat('lumi','⚠️ '+e.message); }
   finally{ setWriting(false); }
 }
 function askAI(q){ openLumi(); document.getElementById('lumiInput').value=q; sendLumi(); }
-function voiceInput(){
+
+// Hold-to-talk voice (like 小布)
+let rec=null, recActive=false;
+function startVoice(btn){
   if(!('webkitSpeechRecognition' in window)){ toast('瀏覽器不支援語音'); return; }
-  const rec = new (window.SpeechRecognition||window.webkitSpeechRecognition)();
-  rec.lang='zh-TW';
-  rec.onresult=e=>{ document.getElementById('lumiInput').value=e.results[0][0].transcript; };
-  rec.start();
-  toast('請說話...');
+  rec = new (window.SpeechRecognition||window.webkitSpeechRecognition)();
+  rec.lang='zh-TW'; rec.interimResults=true;
+  document.getElementById('lumiImg').style.width='140px';
+  document.getElementById('lumiImg').style.height='160px';
+  btn.style.background='var(--accent)';
+  rec.onresult=e=>{
+    const txt = Array.from(e.results).map(r=>r[0].transcript).join('');
+    document.getElementById('lumiInput').value=txt;
+  };
+  rec.onend=()=>{ stopVoice(btn); };
+  rec.start(); recActive=true;
+}
+function stopVoice(btn){
+  if(!recActive) return;
+  recActive=false;
+  try{ rec&&rec.stop(); }catch(e){}
+  document.getElementById('lumiImg').style.width='';
+  document.getElementById('lumiImg').style.height='';
+  btn.style.background='';
+  const v=document.getElementById('lumiInput').value.trim();
+  if(v) sendLumi();
+}
+// TTS read aloud
+function speakText(el){
+  const txt = el.parentElement.innerText.replace(/🔊|朗讀/g,'').trim();
+  if('speechSynthesis' in window){
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(txt);
+    u.lang='zh-TW'; u.rate=1.0;
+    speechSynthesis.speak(u);
+  }
 }
 
 /* ==================== ALARMS ==================== */

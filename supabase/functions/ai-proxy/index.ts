@@ -179,17 +179,40 @@ async function autotag(content) {
 }
 
 async function chat(userMsg, context) {
-  const sys = `你是雲小朵 Lumi，使用者的中文待辦與日誌助手。
+  const sys = `你是雲小朵 Lumi，使用者的中文待辦與日誌執行助手。
+
+你必須直接幫使用者執行動作，不要只問問題。永遠只回傳一個 JSON 物件，不要有任何其他文字。
+
+格式：
+{
+  "reply": "繁體中文自然語言回覆，簡潔",
+  "actions": [
+    {"op":"create_task","data":{"title":"...","date":"YYYY-MM-DD","time":"HH:MM","categoryId":"work|payment|housework|shopping|health|other","tags":["..."],"amount":0}},
+    {"op":"update_task","id":"既有任務id","data":{"completed":true,"title":"..."}},
+    {"op":"delete_task","id":"既有任務id"},
+    {"op":"create_journal","date":"YYYY-MM-DD","content":"..."},
+    {"op":"append_journal","date":"YYYY-MM-DD","content":"要加在既有日誌後面的文字"}
+  ]
+}
+
 規則：
-1. 用繁體中文回答，簡潔。
-2. 只根據我提供的 tasks 和 journals 資料回答，不要編造。
-3. 找日誌時，若找到符合的日期，一定要在回答裡寫出 YYYY-MM-DD 格式的日期，讓使用者可以點擊。
-4. 統計數字要明確，不要含糊。
-5. 如果我要求新增/修改/刪除資料，先回覆「請確認是否要我執行這件事」，不要直接假設已執行。
-6. 不要輸出 markdown 表格，用條列即可。`;
+1. 使用者說「明天買麵包」就直接 create_task，date 用明天的 YYYY-MM-DD。
+2. 使用者說「把買麵包刪掉」就從 context.tasks 找標題最像的，delete_task。
+3. 使用者說「在今天日誌寫下：吃了拉麵」就 create_journal 或 append_journal。
+4. 統計/心情/飲食回顧這類問題，actions 留空陣列，在 reply 裡直接總結。
+5. 如果使用者只是聊天或問問題，actions 是空陣列 []。
+6. 日期不確定時用今天日期（${new Date().toISOString().slice(0,10)}）當參考。
+7. 不要在 reply 裡說「我會幫你...」那種客套話，直接講結果。`;
   const { text, provider } = await withFailover([
     { role: "system", content: sys },
-    { role: "user", content: `我的資料：\n${JSON.stringify(context)}\n\n我的問題：${userMsg}` },
+    { role: "user", content: `我的資料：\n${JSON.stringify(context)}\n\n我的指令：${userMsg}\n\n只回 JSON。` },
   ]);
-  return { reply: text, provider };
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return { reply: text, actions: [], provider };
+  try {
+    const j = JSON.parse(m[0]);
+    return { reply: j.reply || text, actions: j.actions || [], provider };
+  } catch {
+    return { reply: text, actions: [], provider };
+  }
 }
