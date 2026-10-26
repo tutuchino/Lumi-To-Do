@@ -317,7 +317,7 @@
       ontouchstart="startVoice(event);event.preventDefault()" ontouchend="stopVoice();event.preventDefault()"
       title="按住講話"><i data-lucide="mic" class="w-4 h-4"></i></button>
     <input id="lumiInput" class="flex-1" placeholder="問我任何事..." onkeydown="if(event.key==='Enter')sendLumi()">
-    <button class="btn" onclick="sendLumi()">送</button>
+    <button class="btn" id="lumiSendBtn" onclick="sendLumi()">送</button>
   </div>
 </div>
 
@@ -455,18 +455,22 @@ function renderCalendar(){
     area.innerHTML = html;
   } else if(calView==='year'){
     document.getElementById('calTitle').innerText = `${y} 年`;
-    let html = '<div class="grid grid-cols-2 gap-2">';
+    // Heatmap like 得到大腦
+    const counts={};
+    appData.tasks.forEach(t=>{ if(t.date && !t.isBacklog) counts[t.date]=(counts[t.date]||0)+1; });
+    let html = '<div class="glass p-3"><div class="text-center mb-2 text-xs opacity-70">任務密度（顏色越深任務越多）</div><div class="grid grid-cols-12 gap-1">';
     for(let mm=0;mm<12;mm++){
-      html += `<div class="glass p-2"><div class="text-xs font-bold mb-1">${mm+1} 月</div><div class="grid grid-cols-7 gap-0.5 text-center text-[9px]">`;
-      const first = new Date(y,mm,1).getDay(), dim = new Date(y,mm+1,0).getDate();
-      for(let i=first-1;i>=0;i--) html += '<div class="opacity-30"></div>';
+      const dim=new Date(y,mm+1,0).getDate();
+      let max=1; for(let d=1;d<=dim;d++){ const c=counts[`${y}-${String(mm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`]||0; if(c>max)max=c; }
+      html += `<div class="text-[10px] mb-1 text-center font-bold">${mm+1}月</div>`;
       for(let d=1;d<=dim;d++){
-        const dk = `${y}-${String(mm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        html += `<div class="p-0.5 rounded cursor-pointer ${dk===selectedKey?'text-white font-bold':''}" style="${dk===selectedKey?'background:var(--accent)':''}" onclick="pickDate('${dk}')">${d}</div>`;
+        const dk=`${y}-${String(mm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const c=counts[dk]||0;
+        const alpha = c===0?0.08:0.2+0.7*(c/max);
+        html += `<div title="${mm+1}/${d}: ${c}項" onclick="pickDate('${dk}')" style="aspect-ratio:1;background:rgba(168,140,255,${alpha});border-radius:2px;cursor:pointer"></div>`;
       }
-      html += '</div></div>';
     }
-    html += '</div>';
+    html += '</div></div>';
     area.innerHTML = html;
   } else {
     // week / day3 / day — TickTick style time grid
@@ -638,18 +642,24 @@ function addCategory(){
   save(); renderCats();
   document.getElementById('tCat').value = id;
 }
-function addReminderRow(type='at_time', method='banner'){
+function addReminderRow(type='at_time', method='banner', customAt=''){
   const c = document.getElementById('remRows');
   const row = document.createElement('div');
-  row.className='flex gap-1';
+  row.className='flex gap-1 flex-wrap';
   row.innerHTML = `
-    <select class="rem-type text-xs flex-1">
+    <select class="rem-type text-xs flex-1" onchange="this.parentElement.querySelector('.custom-dt').classList.toggle('hidden', this.value!=='custom')">
       <option value="at_time" ${type==='at_time'?'selected':''}>準時</option>
       <option value="15m" ${type==='15m'?'selected':''}>15分前</option>
       <option value="30m" ${type==='30m'?'selected':''}>30分前</option>
-      <option value="1h" ${type==='1h'?'selected':''}>1小前</option>
+      <option value="1h" ${type==='1h'?'selected':''}>1小時前</option>
+      <option value="2h" ${type==='2h'?'selected':''}>2小時前</option>
       <option value="1d" ${type==='1d'?'selected':''}>1天前</option>
+      <option value="2d" ${type==='2d'?'selected':''}>2天前</option>
+      <option value="3d" ${type==='3d'?'selected':''}>3天前</option>
+      <option value="1w" ${type==='1w'?'selected':''}>1週前</option>
+      <option value="custom" ${type==='custom'?'selected':''}>自訂日期時間</option>
     </select>
+    <input type="datetime-local" class="custom-dt text-xs ${type==='custom'?'':'hidden'}" value="${customAt||''}" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px">
     <select class="rem-method text-xs">
       <option value="banner" ${method==='banner'?'selected':''}>🔔 橫幅</option>
       <option value="alarm" ${method==='alarm'?'selected':''}>🔊 鬧聲</option>
@@ -703,7 +713,8 @@ function handleSaveTask(e){
   const isBacklog = document.getElementById('tNoDate').checked;
   const reminders = Array.from(document.querySelectorAll('#remRows > div')).map(r=>({
     type: r.querySelector('.rem-type').value,
-    method: r.querySelector('.rem-method').value
+    method: r.querySelector('.rem-method').value,
+    customAt: r.querySelector('.custom-dt') ? r.querySelector('.custom-dt').value : ''
   }));
   const subtasks = Array.from(document.querySelectorAll('#subRows > div')).map(r=>({
     title: r.querySelector('.sub-title').value.trim(),
@@ -750,7 +761,7 @@ function editTask(id){
   document.getElementById('tRepeat').value=t.repeat||'none';
   document.getElementById('tTags').value=(t.tags||[]).join(', ');
   document.getElementById('remRows').innerHTML='';
-  (t.reminders||[]).forEach(r=>addReminderRow(r.type, r.method||'banner'));
+  (t.reminders||[]).forEach(r=>addReminderRow(r.type, r.method||'banner', r.customAt||''));
   if(!(t.reminders||[]).length) addReminderRow();
   document.getElementById('subRows').innerHTML='';
   (t.subtasks||[]).forEach(s=>addSubtaskRow(s.title, s.tag, s.done));
@@ -957,27 +968,31 @@ async function sendLumi(){
 }
 function askAI(q){ openLumi(); document.getElementById('lumiInput').value=q; sendLumi(); }
 
-// Hold-to-talk voice (like WeChat/Doubao)
-let rec=null, recActive=false, micBtn=null;
+// Hold-to-talk voice (WeChat/Doubao style)
+let rec=null, recActive=false, micBtn=null, isTouch=false;
 function startVoice(e){
   if(recActive) return;
-  micBtn = e.currentTarget || document.getElementById('micBtn');
-  if(!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)){ toast('瀏覽器不支援語音'); return; }
+  if(e && e.type==='touchstart') isTouch=true;
+  else if(isTouch && e && e.type==='mousedown') return; // ignore mouse after touch
+  micBtn = document.getElementById('micBtn');
+  if(!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)){ toast('此瀏覽器不支援語音，請用 Chrome'); return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   rec = new SR();
-  rec.lang='zh-TW'; rec.interimResults=true; rec.continuous=true;
+  rec.lang='zh-TW'; rec.interimResults=true;
   const img=document.getElementById('lumiImg');
-  if(img){ img.style.width='120px'; img.style.height='140px'; img.style.opacity='0.7'; }
-  if(micBtn) micBtn.style.background='var(--accent)';
+  if(img){ img.style.transition='all .2s'; img.style.width='110px'; img.style.height='130px'; img.style.opacity='0.6'; }
+  if(micBtn){ micBtn.style.background='var(--accent)'; micBtn.style.color='#fff'; }
+  const sendBtn=document.querySelector('#lumiSendBtn');
+  if(sendBtn) sendBtn.textContent='鬆開送';
   const inp=document.getElementById('lumiInput');
   rec.onresult=ev=>{
     let txt='';
     for(const r of ev.results) txt+=r[0].transcript;
     inp.value=txt;
   };
-  rec.onerror=ev=>{ toast('語音錯誤: '+ev.error); stopVoice(); };
+  rec.onerror=ev=>{ toast('🎤 '+ev.error); stopVoice(); };
   rec.onend=()=>{ if(recActive) stopVoice(); };
-  try{ rec.start(); recActive=true; }catch(err){}
+  try{ rec.start(); recActive=true; }catch(err){ toast('無法啟動麥克風'); }
 }
 function stopVoice(){
   if(!recActive) return;
@@ -985,7 +1000,9 @@ function stopVoice(){
   try{ rec&&rec.stop(); }catch(e){}
   const img=document.getElementById('lumiImg');
   if(img){ img.style.width=''; img.style.height=''; img.style.opacity=''; }
-  if(micBtn) micBtn.style.background='';
+  if(micBtn){ micBtn.style.background=''; micBtn.style.color=''; }
+  const sendBtn=document.querySelector('#lumiSendBtn');
+  if(sendBtn) sendBtn.textContent='送';
   const v=document.getElementById('lumiInput').value.trim();
   if(v) sendLumi();
 }
