@@ -85,7 +85,7 @@
 </div>
 <script>
 (function(){
-  var PW = 'lumi2026';
+  var PW = 'lumi8487';
   var session = localStorage.getItem('lumi_auth');
   if(session !== PW){
     document.getElementById('gate').style.display = 'flex';
@@ -95,7 +95,7 @@
 })();
 function tryGate(){
   var v = document.getElementById('gatePw').value;
-  if(v === 'lumi2026'){
+  if(v === 'lumi8487'){
     localStorage.setItem('lumi_auth', v);
     document.getElementById('gate').style.display = 'none';
   } else {
