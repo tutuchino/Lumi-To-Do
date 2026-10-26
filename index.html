@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- LUMI v14 -->
+<!-- LUMI v16 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <title>雲小朵 Lumi · 待辦</title>
 <meta name="theme-color" content="#EBDEC2">
@@ -50,8 +50,13 @@
   .icon-btn{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt);transition:all .15s;}
   .icon-btn:hover{background:var(--panel2);transform:scale(1.05);}
   .icon-btn:active{transform:scale(0.95);}
-  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:11px;display:inline-flex;align-items:center;gap:3px;}
-  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;background:var(--panel2);border:1px solid var(--line);margin:2px;color:var(--txt);}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:3px 9px;font-size:11px;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;}
+  .tab-btn{font-size:10px;padding:3px 7px;white-space:nowrap;flex:0 0 auto;word-break:keep-all;}
+  .tab-btn span{white-space:nowrap;word-break:keep-all;display:inline-block;}
+  .tab-btn{margin:0;gap:3px;}
+  .tab-btn svg{width:11px;height:11px;}
+  .tab-btn svg{flex:0 0 auto;}
+  .chip{display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:999px;font-size:11px;background:var(--panel2);border:1px solid var(--line);margin:2px;color:var(--txt);}
   .icon-btn{width:36px;height:36px;border-radius:10px;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt);}
   .icon-btn:hover{background:var(--panel2);}
   .tab-active{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important;}
@@ -202,11 +207,11 @@ async function pushToCloud(){
 
 <!-- Tabs -->
 <nav class="px-3 pt-2 flex gap-1 overflow-x-auto scroll-thin text-xs">
-  <button onclick="switchTab('cal')" data-tab="cal" class="tab-btn chip tab-active">📅 日曆</button>
-  <button onclick="switchTab('all')" data-tab="all" class="tab-btn chip">📋 全部</button>
-  <button onclick="switchTab('backlog')" data-tab="backlog" class="tab-btn chip">📥 Backlog <span id="bBadge"></span></button>
-  <button onclick="switchTab('journals')" data-tab="journals" class="tab-btn chip">📖 日誌</button>
-  <button onclick="switchTab('stats')" data-tab="stats" class="tab-btn chip">📊 統計</button>
+  <button onclick="switchTab('cal')" data-tab="cal" class="tab-btn chip tab-active"><i data-lucide="calendar-days" class="w-3 h-3"></i><span>日曆</span></button>
+  <button onclick="switchTab('all')" data-tab="all" class="tab-btn chip"><i data-lucide="list" class="w-3 h-3"></i><span>全部</span></button>
+  <button onclick="switchTab('backlog')" data-tab="backlog" class="tab-btn chip"><i data-lucide="inbox" class="w-3 h-3"></i><span>Backlog</span> <span id="bBadge"></span></button>
+  <button onclick="switchTab('journals')" data-tab="journals" class="tab-btn chip"><i data-lucide="book-open" class="w-3 h-3"></i><span>日誌</span></button>
+  <button onclick="switchTab('stats')" data-tab="stats" class="tab-btn chip"><i data-lucide="bar-chart-3" class="w-3 h-3"></i><span>統計</span></button>
 </nav>
 
 <main class="px-3 py-2 flex-1">
@@ -215,12 +220,12 @@ async function pushToCloud(){
   <section id="tab-cal">
     <!-- View switcher -->
     <div class="flex gap-1 mb-2 text-xs">
-      <button class="chip view-btn" data-view="list" onclick="setView('list')">清單</button>
-      <button class="chip view-btn" data-view="month" onclick="setView('month')">月</button>
-      <button class="chip view-btn" data-view="week" onclick="setView('week')">週</button>
-      <button class="chip view-btn" data-view="day3" onclick="setView('day3')">3日</button>
-      <button class="chip view-btn" data-view="day" onclick="setView('day')">日</button>
-      <button class="chip view-btn" data-view="year" onclick="setView('year')">年</button>
+      <button class="chip view-btn" data-view="list" data-i18n="vlist" onclick="setView('list')">清單</button>
+      <button class="chip view-btn" data-view="month" data-i18n="vmonth" onclick="setView('month')">月</button>
+      <button class="chip view-btn" data-view="week" data-i18n="vweek" onclick="setView('week')">週</button>
+      <button class="chip view-btn" data-view="day3" data-i18n="vday3" onclick="setView('day3')">3日</button>
+      <button class="chip view-btn" data-view="day" data-i18n="vday" onclick="setView('day')">日</button>
+      <button class="chip view-btn" data-view="year" data-i18n="vyear" onclick="setView('year')">年</button>
     </div>
 
     <div class="flex items-center justify-between mb-2">
@@ -265,7 +270,7 @@ async function pushToCloud(){
   <!-- BACKLOG -->
   <section id="tab-backlog" class="hidden">
     <div class="flex justify-between items-center mb-2">
-      <b>📥 未排程事項</b>
+      <b><i data-lucide="inbox" class="w-3 h-3" style="display:inline"></i> 未排程事項</b>
       <button class="btn text-xs" onclick="openAddTask(true)">+ 加入 Backlog</button>
     </div>
     <div id="backlogList" class="flex flex-col gap-1.5"></div>
@@ -285,7 +290,7 @@ async function pushToCloud(){
       <div class="glass p-3 text-center"><div class="text-[11px]" style="color:var(--muted)">支出</div><div class="text-xl font-bold" id="stMoney">$0</div></div>
     </div>
     <div class="glass p-3 mb-3">
-      <b class="text-sm">🤖 AI 統計助手</b>
+      <b class="text-sm"><i data-lucide="sparkles" class="w-3.5 h-3.5" style="display:inline"></i> AI 統計助手</b>
       <div class="flex flex-wrap gap-1 mt-2 text-[11px]">
         <button class="chip" onclick="askAI('統計這個月完成了哪些事，總結一下')">本月總結</button>
         <button class="chip" onclick="askAI('這個月花了多少錢？分類說明')">本月花費</button>
@@ -324,14 +329,14 @@ async function pushToCloud(){
           </div>
         </div>
         <div><label class="text-[11px]" style="color:var(--muted)">優先度</label>
-          <select id="tPriority"><option value="low">低</option><option value="mid" selected>中</option><option value="high">高</option></select>
+          <select id="tPriority"><option value="low" data-i18n="plow">低</option><option value="mid" selected data-i18n="pmid">中</option><option value="high" data-i18n="phigh">高</option></select>
         </div>
       </div>
       <div><label class="text-[11px]" style="color:var(--muted)">標籤（逗號分隔，自己加或用 AI 建議）</label>
         <input id="tTags" placeholder="例如：繳費, 水費" class="mt-1">
         <div id="aiTagBox" class="mt-1 text-[11px]" style="color:var(--muted)"></div>
       </div>
-      <label class="flex items-center gap-2 text-xs"><input type="checkbox" id="tNoDate" onchange="toggleDateBox(this.checked)"> 不排日期（Backlog）</label>
+      <label class="flex items-center gap-2 text-xs"><input type="checkbox" id="tNoDate" onchange="toggleDateBox(this.checked)"> <span>不排日期（Backlog）</span></label>
       <div id="dateBox" class="grid grid-cols-2 gap-2">
         <div><label class="text-[11px]" style="color:var(--muted)">日期</label><input type="date" id="tDate"></div>
         <div><label class="text-[11px]" style="color:var(--muted)">時間</label><input type="time" id="tTime"></div>
@@ -480,46 +485,140 @@ let calView = 'month';
 
 // ==================== i18n ====================
 const I18N = {
-  zh: {
-    '新增任務':'新增任務','Backlog':'Backlog','全部':'全部','今天':'今天',
-    '清單':'清單','月':'月','週':'週','3日':'3日','日':'日','年':'年',
-    '待辦事項':'待辦事項','日誌':'日誌','分類':'分類','標籤':'標籤',
-    '提醒':'提醒','子任務':'子任務','備註':'備註','地址':'地址',
-    '儲存':'儲存','取消':'取消','刪除':'刪除','編輯':'編輯',
-    '標題':'標題','日期':'日期','時間':'時間','金額':'金額','幣別':'幣別',
-    '不重複':'不重複','每天':'每天','每週':'每週','每月':'每月','每年':'每年',
-    '準時':'準時','15分前':'15分前','30分前':'30分前','1小時前':'1小時前',
-    '橫幅':'橫幅','鬧聲':'鬧聲','兩者':'兩者',
-    '問我任何事...':'問我任何事...','送':'送','關閉':'關閉',
-    '無排程事項':'無排程事項','已完成':'已完成',
-    '工作':'工作','付款':'付款','家事':'家事','採買':'採買','健康':'健康','其他':'其他'
-  },
+  zh: {},
   en: {
-    '新增任務':'New Task','Backlog':'Backlog','全部':'All','今天':'Today',
-    '清單':'List','月':'Month','週':'Week','3日':'3 Day','日':'Day','年':'Year',
-    '待辦事項':'Tasks','日誌':'Journal','分類':'Category','標籤':'Tags',
-    '提醒':'Reminders','子任務':'Subtasks','備註':'Notes','地址':'Location',
-    '儲存':'Save','取消':'Cancel','刪除':'Delete','編輯':'Edit',
-    '標題':'Title','日期':'Date','時間':'Time','金額':'Amount','幣別':'Currency',
+    // ---- compound keys first (avoid corrupting multi-char words) ----
+    '日曆':'Calendar','日誌':'Journal','統計':'Stats','待辦':'Tasks',
+    '農曆':'Lunar','節氣':'Solar Term','未排程事項':'Unscheduled','任務':'Tasks',
+    '週一':'Mon','週二':'Tue','週三':'Wed','週四':'Thu','週五':'Fri','週六':'Sat','週日':'Sun',
+    '新增任務':'New Task','全部':'All','今天':'Today','本週':'This Week',
+    '清單':'List','3日':'3 Day',
+    '分類':'Category','標籤':'Tags','提醒':'Reminders','子任務':'Subtasks',
+    '備註':'Notes','地址':'Location','標題':'Title','日期':'Date','時間':'Time',
+    '金額':'Amount','幣別':'Currency','重複':'Repeat',
     '不重複':'None','每天':'Daily','每週':'Weekly','每月':'Monthly','每年':'Yearly',
-    '準時':'At time','15分前':'15 min before','30分前':'30 min before','1小時前':'1 hour before',
-    '橫幅':'Banner','鬧聲':'Alarm','兩者':'Both',
-    '問我任何事...':'Ask me anything...','送':'Send','關閉':'Close',
-    '無排程事項':'No tasks','已完成':'Done',
-    '工作':'Work','付款':'Payment','家事':'Chores','採買':'Shopping','健康':'Health','其他':'Other'
+    '準時':'At time','15分前':'15 min before','30分前':'30 min before',
+    '1小時前':'1 hour before','2小時前':'2 hours before','1天前':'1 day before',
+    '2天前':'2 days before','3天前':'3 days before','1週前':'1 week before',
+    '自訂日期時間':'Custom date & time','橫幅':'Banner','鬧聲':'Alarm','兩者':'Both',
+    '儲存':'Save','取消':'Cancel','刪除':'Delete','編輯':'Edit','關閉':'Close',
+    '送':'Send','採用':'Apply','已儲存':'Saved',
+    '無排程事項':'Nothing scheduled','已完成':'Done','沒有符合':'No matches',
+    '沒有即將到來的任務':'Nothing coming up','尚無日誌':'No journal entries yet',
+    '尚無':'None yet','無結果':'No results','即將到來':'Upcoming',
+    '任務密度（顏色越深任務越多）':'Task density (darker = more tasks)',
+    '工作':'Work','付款':'Payment','繳費':'Payment','家務':'Chores','家事':'Chores',
+    '購物':'Shopping','採買':'Shopping','健康':'Health','其他':'Other',
+    '刪除此分類…':'Delete this category...',
+    '問我任何事...':'Ask me anything...','子任務...':'Subtask...',
+    '搜尋任務、日誌...':'Search tasks, journals...',
+    '儲存失敗':'Save failed','定位失敗':'Location failed','不支援':'Not supported',
+    '此瀏覽器不支援朗讀':'Text-to-speech not supported',
+    '此瀏覽器不支援語音，請用 Chrome':'Voice input needs Chrome',
+    '無法啟動麥克風':'Cannot access microphone',
+    '今日 AI 額度已用完':'Daily AI quota used up',
+    '尚未設定 Supabase':'Supabase not configured',
+    '登入':'Sign In','首次使用會自動建立帳號':'First time? An account is created automatically',
+    '解鎖':'Unlock','宜':'Good for','忌':'Avoid','密碼':'Password',
+    '當日随筆':'Daily note','當日隨筆':'Daily note','儲存日誌':'Save',
+    '寫入日誌':'Write journal','追加日誌':'Append journal','朗讀':'Read aloud','主題':'Theme',
+    '完成':'Done','支出':'Spent','財務紀錄':'Ledger','AI 統計助手':'AI Stats Assistant',
+    '本月總結':'Monthly summary','本月花費':'Monthly spend','上週回顧':'Last week review',
+    '延遲分析':'Delay analysis','任務標題':'Task title','任務細節...':'Task details...','加入 Backlog':'Add to Backlog','未排程':'Unscheduled',
+    '例如：繳水費':'e.g. Pay water bill','例如：Payment, 水費':'e.g. Payment, water',
+    '地點（會連結 Google 地圖）':'Location (opens Google Maps)','天數':'days',
+    '例如：買牛奶':'e.g. Buy milk','備註...':'Notes...','新增分類…':'New category...',
+    '優先度':'Priority','低':'Low','中':'Medium','高':'High',
+    '不排日期（Backlog）':'No date (Backlog)','不排日期':'No date',
+    '標籤（逗號分隔，自己加或用 AI 建議）':'Tags (comma separated, or use AI suggest)',
+    '新增提醒':'Add reminder','新增子任務':'Add subtask',
+    '統計這個月完成了哪些事，總結一下':'Summarize what I finished this month',
+    '這個月花了多少錢？分類說明':'How much did I spend this month? Break Down by category',
+    '上週完成了哪些任務？':'What did I finish last week?',
+    '我最常延遲哪一類任務？':'Which category do I delay most?'
+
   }
 };
 function t(key){
   const lang = appData.settings.lang || 'zh';
+  if(lang === 'zh') return key;
   return (I18N[lang] && I18N[lang][key]) || key;
 }
+function isEN(){ return (appData.settings.lang||'zh') === 'en'; }
+
+/* ---- lunar helper: never crash if the CDN library is missing ---- */
+function hasLunar(){ return typeof Solar !== 'undefined'; }
+function lunarOf(y,m,d){
+  try{
+    if(!hasLunar()) return null;
+    const solar = (typeof y==='object') ? Solar.fromDate(y) : Solar.fromYmd(y,m,d);
+    return solar.getLunar();
+  }catch(e){ return null; }
+}
+
+/* Translate the live DOM by phrase substitution (handles JS-rendered content) */
+function applyLang(){
+  const lang = appData.settings.lang || 'zh';
+  if(lang === 'zh') return;
+  const dict = I18N[lang] || {};
+  const keys = Object.keys(dict).filter(k=>k).sort((a,b)=>b.length-a.length);
+  if(!keys.length) return;
+
+  const translate = (str)=>{
+    if(!str) return str;
+    let out = str;
+    for(const k of keys){
+      if(out.indexOf(k) !== -1) out = out.split(k).join(dict[k]);
+    }
+    return out;
+  };
+
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(n){
+      const p = n.parentElement;
+      if(!p) return NodeFilter.FILTER_REJECT;
+      const tag = p.tagName;
+      if(tag==='SCRIPT'||tag==='STYLE') return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes = [];
+  while(walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(n=>{
+    const nt = translate(n.nodeValue);
+    if(nt !== n.nodeValue) n.nodeValue = nt;
+  });
+
+  document.querySelectorAll('[placeholder]').forEach(el=>{
+    const v = el.getAttribute('placeholder');
+    const nt = translate(v);
+    if(nt !== v) el.setAttribute('placeholder', nt);
+  });
+  document.querySelectorAll('[title]').forEach(el=>{
+    const v = el.getAttribute('title');
+    const nt = translate(v);
+    if(nt !== v) el.setAttribute('title', nt);
+  });
+  // explicit data-i18n keys for single-char controls
+  const VIEW = {vlist:'List', vmonth:'Month', vweek:'Week', vday3:'3 Day', vday:'Day', vyear:'Year',
+                plow:'Low', pmid:'Medium', phigh:'High'};
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const k = el.getAttribute('data-i18n');
+    if(VIEW[k]) el.textContent = VIEW[k];
+  });
+  // weekday header row (日一二三四五六)
+  const WD = {'日':'Sun','一':'Mon','二':'Tue','三':'Wed','四':'Thu','五':'Fri','六':'Sat'};
+  document.querySelectorAll('.grid-cols-7 > div').forEach(el=>{
+    const k = el.textContent.trim();
+    if(WD[k] && el.children.length===0 && el.textContent.trim().length===1) el.textContent = WD[k];
+  });
+}
+
 function toggleLang(){
   appData.settings.lang = (appData.settings.lang==='en') ? 'zh' : 'en';
   save();
-  toast(appData.settings.lang==='en'?'English 🌐':'中文 🌐');
-  setTimeout(()=>location.reload(), 300);
+  location.reload();
 }
-
 const HOL = {
   TW:{'01-01':'元旦','02-28':'和平紀念日','04-04':'兒童節','05-01':'勞動節','09-03':'軍人節','10-10':'國慶日','10-25':'臺灣光復節','12-25':'聖誕節'},
   CN:{'01-01':'元旦','02-17':'春節','02-18':'春節','02-19':'春節','04-04':'清明節','05-01':'勞動節','06-19':'端午節','09-25':'中秋節','10-01':'國慶節','10-02':'國慶節','10-03':'國慶節'},
@@ -533,9 +632,15 @@ function load(){
     if(raw){
       const d = JSON.parse(raw);
       appData = Object.assign(appData, d);
-      appData.settings = Object.assign({holTW:true,holCN:true,holAR:true,theme:'light'}, d.settings||{});
+      appData.settings = Object.assign({holTW:true,holCN:true,holAR:true,theme:'light',lang:'zh'}, d.settings||{});
     }
   }catch(e){}
+  // ---- migrate categories: attach lucide icon names, strip leading emoji ----
+  const ICON_MAP = {payment:'credit-card',housework:'sparkles',shopping:'shopping-cart',work:'briefcase',health:'heart-pulse',other:'paperclip'};
+  (appData.categories||[]).forEach(c=>{
+    if(!c.icon) c.icon = ICON_MAP[c.id] || 'tag';
+    c.name = (c.name||'').replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u,'').trim() || '其他';
+  });
   document.documentElement.setAttribute('data-theme', appData.settings.theme);
   document.getElementById('holTW').checked = appData.settings.holTW!==false;
   document.getElementById('holCN').checked = appData.settings.holCN!==false;
@@ -558,8 +663,10 @@ function toast(t,m=''){
 /* ==================== ALMANAC ==================== */
 function renderAlmanac(){
   const now = new Date();
+  if(!hasLunar()){ document.getElementById('alSolar').innerText=''; return; }
   const s = Solar.fromDate(now), l = s.getLunar();
-  document.getElementById('alSolar').innerText = `${s.getYear()}.${String(s.getMonth()).padStart(2,'0')}.${String(s.getDay()).padStart(2,'0')} 週${'日一二三四五六'[now.getDay()]}`;
+  const WDN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  document.getElementById('alSolar').innerText = `${s.getYear()}.${String(s.getMonth()).padStart(2,'0')}.${String(s.getDay()).padStart(2,'0')} ${isEN()?WDN[now.getDay()]:'週'+'日一二三四五六'[now.getDay()]}`;
   document.getElementById('alLunar').innerText = `農曆 ${l.getMonthInChinese()}月${l.getDayInChinese()}`;
   document.getElementById('alJieqi').innerText = `節氣：${l.getJieQi()||'—'}`;
   document.getElementById('alYi').innerText = `宜：${(l.getDayYi()||[]).slice(0,3).join(' · ')||'—'}`;
@@ -594,7 +701,7 @@ function renderCalendar(){
   const area = document.getElementById('calArea');
   const y = currentDate.getFullYear(), m = currentDate.getMonth();
   if(calView==='list'){
-    document.getElementById('calTitle').innerText = '即將到來';
+    document.getElementById('calTitle').innerText = isEN()?'Upcoming':'即將到來';
     const today = fmtKey(new Date());
     const upcoming = appData.tasks.filter(t=>!t.isBacklog && !t.completed && t.date >= today)
       .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
@@ -604,15 +711,16 @@ function renderCalendar(){
     renderSelected(); return;
   }
   if(calView==='month'){
-    document.getElementById('calTitle').innerText = `${y} 年 ${m+1} 月`;
+    document.getElementById('calTitle').innerText = isEN()?`${y}/${String(m+1).padStart(2,'0')}`:`${y} 年 ${m+1} 月`;
     let html = '<div class="grid grid-cols-7 gap-1 text-center text-[10px] mb-1" style="color:var(--muted)"><div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div></div><div class="grid grid-cols-7 gap-1">';
     const first = new Date(y,m,1).getDay(), dim = new Date(y,m+1,0).getDate(), prev = new Date(y,m,0).getDate();
     const today = fmtKey(new Date());
     for(let i=first-1;i>=0;i--){ html += `<div class="cal-cell other">${prev-i}</div>`; }
     for(let d=1;d<=dim;d++){
       const dk = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const l = Solar.fromYmd(y,m+1,d).getLunar();
-      let lt = l.getDayInChinese(); if(l.getDay()===1) lt = l.getMonthInChinese()+'月';
+      const l = lunarOf(y,m+1,d);
+      let lt = l ? l.getDayInChinese() : '';
+      if(l && l.getDay()===1) lt = l.getMonthInChinese()+'月';
       const h = hols(m+1,d);
       const n = getTasksForDate(dk).length;
       html += `<div class="cal-cell ${dk===today?'today':''} ${dk===selectedKey?'selected':''}" onclick="pickDate('${dk}')">
@@ -624,7 +732,7 @@ function renderCalendar(){
     html += '</div>';
     area.innerHTML = html;
   } else if(calView==='year'){
-    document.getElementById('calTitle').innerText = `${y} 年`;
+    document.getElementById('calTitle').innerText = isEN()?`${y}`:`${y} 年`;
     // Heatmap like 得到大腦
     const counts={};
     appData.tasks.forEach(t=>{ if(t.date && !t.isBacklog) counts[t.date]=(counts[t.date]||0)+1; });
@@ -645,7 +753,7 @@ function renderCalendar(){
   } else {
     // week / day3 / day — TickTick style time grid
     const days = calView==='week'?7:calView==='day3'?3:1;
-    document.getElementById('calTitle').innerText = days===7?'本週':days===3?'3 天':'一日';
+    document.getElementById('calTitle').innerText = days===7?(isEN()?'This Week':'本週'):days===3?(isEN()?'3 Days':'3 天'):(isEN()?'Today':'一日');
     const CATS = {payment:'#FFB366', housework:'#9CCC9C', shopping:'#9CB8FF', work:'#D4A5FF', health:'#FFB3C1', other:'#D0D0D0'};
     const H_START=6, H_END=23, ROW=48; // px per hour
     const start = new Date(currentDate);
@@ -718,8 +826,8 @@ function getTasksForDate(dk){
       if(t.repeat==='monthly' && td===cd) return true;
       if(t.repeat==='yearly' && tm===cm && td===cd) return true;
       if(t.repeat==='lunar_yearly' || t.repeat==='lunar_monthly'){
-        const cl = Solar.fromYmd(cy,cm,cd).getLunar();
-        if(String(cl.getDay())===String(t.lunarDay)) return true;
+        const cl = lunarOf(cy,cm,cd);
+        if(cl && String(cl.getDay())===String(t.lunarDay)) return true;
       }
       if(t.repeat==='custom_days' && t.customDays){
         const diff = Math.ceil((new Date(cy,cm-1,cd)-new Date(ty,tm-1,td))/86400000);
@@ -732,7 +840,8 @@ function getTasksForDate(dk){
 
 function renderSelected(){
   const [y,m,d] = selectedKey.split('-').map(Number);
-  const l = Solar.fromYmd(y,m,d).getLunar();
+  const l = lunarOf(y,m,d);
+  if(!l) return;
   document.getElementById('selDateTitle').innerText = selectedKey;
   document.getElementById('selDateLunar').innerText = `農曆 ${l.getMonthInChinese()}月${l.getDayInChinese()}`;
   document.getElementById('selHoliday').innerText = hols(m,d).join(' / ');
@@ -742,6 +851,7 @@ function renderSelected(){
   list.innerHTML = tasks.length ? tasks.map(t=>taskHTML(t)).join('') : '<p class="text-xs text-center py-3" style="color:var(--muted)">無排程事項</p>';
   lucide.createIcons();
   refreshWeather();
+  relang();
 }
 
 /* ==================== TASK UI ==================== */
@@ -781,7 +891,7 @@ function taskHTML(t){
 
 function renderCats(){
   const sel = document.getElementById('tCat');
-  sel.innerHTML = appData.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('') + '<option value="__delete__">🗑 刪除此分類…</option>';
+  sel.innerHTML = appData.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('') + '<option value="__delete__">— 刪除此分類…</option>';
   const all = document.getElementById('allCat');
   all.innerHTML = '<option value="all">全部</option>'+appData.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 }
@@ -804,7 +914,7 @@ function onCatChange(){
 }
 
 function openAddTask(isBacklog){
-  document.getElementById('tmTitle').innerText = isBacklog?'加入 Backlog':'新增任務';
+  document.getElementById('tmTitle').innerText = isBacklog?t('加入 Backlog'):t('新增任務');
   document.getElementById('taskForm')?.reset?.();
   document.getElementById('editTaskId').value='';
   document.getElementById('tTitle').value='';
@@ -818,6 +928,7 @@ function openAddTask(isBacklog){
   renderCats();
   document.getElementById('remRows').innerHTML='';
   addReminderRow('at_time','banner');
+  setTimeout(()=>{ relang(); }, 30);
   document.getElementById('subRows').innerHTML='';
   document.getElementById('aiTagBox').innerText='';
   document.getElementById('tTags').value='';
@@ -857,9 +968,9 @@ function addReminderRow(type='at_time', method='banner', customAt=''){
     </select>
     <input type="datetime-local" class="custom-dt text-xs ${type==='custom'?'':'hidden'}" value="${customAt||''}" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px">
     <select class="rem-method text-xs">
-      <option value="banner" ${method==='banner'?'selected':''}>🔔 橫幅</option>
-      <option value="alarm" ${method==='alarm'?'selected':''}>🔊 鬧聲</option>
-      <option value="both" ${method==='both'?'selected':''}>🔔🔊 兩者</option>
+      <option value="banner" ${method==='banner'?'selected':''}>橫幅</option>
+      <option value="alarm" ${method==='alarm'?'selected':''}>鬧聲</option>
+      <option value="both" ${method==='both'?'selected':''}>兩者</option>
     </select>
     <button type="button" class="chip" onclick="this.parentElement.remove()">✕</button>`;
   c.appendChild(row);
@@ -1032,6 +1143,7 @@ function switchTab(t){
   if(t==='backlog') renderBacklog();
   if(t==='journals') renderJournals();
   if(t==='stats') renderStats();
+  relang();
 }
 function toggleTheme(){
   const themes=['light','dark','night','violet','ocean'];
@@ -1261,13 +1373,16 @@ function beep(){
 }
 
 /* ==================== INIT ==================== */
-function refreshAll(){ renderCalendar(); renderAll(); renderBacklog(); renderStats(); renderJournals(); }
+function refreshAll(){ renderCalendar(); renderAll(); renderBacklog(); renderStats(); renderJournals(); relang(); }
+function relang(){ try{ lucide.createIcons(); applyLang(); }catch(e){} }
 window.addEventListener('DOMContentLoaded',()=>{
   load();
   renderAlmanac();
   renderCats();
   refreshAll();
   startAlarms();
+  lucide.createIcons();
+  applyLang();
   lucide.createIcons();
 });
 </script>
