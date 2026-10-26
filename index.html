@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- LUMI v20 -->
+<!-- LUMI v21 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <title>雲小朵 Lumi · 待辦</title>
 <meta name="theme-color" content="#EBDEC2">
@@ -407,7 +407,7 @@ async function cloudPushNow(){
       <b id="tmTitle">新增任務</b>
       <button class="icon-btn" onclick="closeTaskModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
     </div>
-    <form onsubmit="handleSaveTask(event)" class="flex flex-col gap-2.5">
+    <form id="taskForm" onsubmit="handleSaveTask(event)" class="flex flex-col gap-2.5">
       <input type="hidden" id="editTaskId">
       <div><label class="text-[11px]" style="color:var(--muted)">任務標題</label>
         <input id="tTitle" required placeholder="例如：繳水費"></div>
@@ -493,6 +493,11 @@ async function cloudPushNow(){
         <b>📍 天氣定位</b>
         <button class="btn-ghost mt-1 w-full" onclick="requestLocation()">使用現在位置</button>
         <div id="locStatus" class="mt-1" style="color:var(--muted)"></div>
+      </div>
+      <div class="glass2 p-2">
+        <b>🔔 提醒通知</b>
+        <button class="btn-ghost mt-1 w-full" onclick="enableNotifications()">開啟系統通知</button>
+        <div class="mt-1" style="color:var(--muted)">狀態：<span id="notifStatus">--</span></div>
       </div>
       <div class="glass2 p-2">
         <b>📦 備份</b>
@@ -620,6 +625,15 @@ const I18N = {
     '優先度':'Priority','低':'Low','中':'Medium','高':'High',
     '不排日期（Backlog）':'No date (Backlog)','不排日期':'No date',
     '標籤（用逗號分隔）':'Tags (comma separated)',
+    '提醒通知':'Reminders & Notifications','開啟系統通知':'Enable system notifications',
+    '狀態：':'Status:','已開啟':'On','未開啟':'Off','不支援':'Not supported',
+    '混合幣別':'(mixed currencies)','通知已開啟':'Notifications enabled',
+    '提醒會顯示在通知欄':'Reminders will appear in your notification bar',
+    '未開啟通知':'Notifications not enabled','提醒只會在 App 內顯示':'Reminders will only show inside the app',
+    '此瀏覽器不支援通知':'This browser does not support notifications',
+    '使用現在位置':'Use current location','天氣定位':'Weather location','備份':'Backup',
+    '匯出 JSON':'Export JSON','匯入 JSON':'Import JSON','設定':'Settings',
+    '匯入失敗':'Import failed','檔案格式不正確':'Invalid file format',
     '新增提醒':'Add reminder','新增子任務':'Add subtask','回到今天':'Back to today','搜尋任務...':'Search tasks...','搜尋任務、日誌...':'Search tasks, journals...',
     '關鍵字搜尋日誌...':'Search journal...','按住此處說話，或打字...':'Hold to speak, or type...',
     '例如：買牛奶':  'e.g. Buy milk',
@@ -742,7 +756,7 @@ function load(){
 }
 function saveLocalOnly(){ try{ localStorage.setItem('lumi_v9', JSON.stringify(appData)); }catch(e){ toast('儲存失敗', e.message); } }
 function save(){ appData.updatedAt = Date.now(); saveLocalOnly(); cloudPush(); }
-window.addEventListener('beforeunload', save);
+window.addEventListener('beforeunload', ()=>{ try{ saveLocalOnly(); }catch(e){} });
 
 function fmtKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function esc(s){ return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -910,6 +924,7 @@ function pickDate(dk){ selectedKey = dk; renderCalendar(); }
 function getTasksForDate(dk){
   return appData.tasks.filter(t=>{
     if(t.isBacklog) return false;
+    if(!t.date) return false;
     if(t.date===dk) return true;
     if(t.repeat && t.repeat!=='none' && t.date<dk){
       const [ty,tm,td]=t.date.split('-').map(Number);
@@ -920,7 +935,15 @@ function getTasksForDate(dk){
       if(t.repeat==='yearly' && tm===cm && td===cd) return true;
       if(t.repeat==='lunar_yearly' || t.repeat==='lunar_monthly'){
         const cl = lunarOf(cy,cm,cd);
-        if(cl && String(cl.getDay())===String(t.lunarDay)) return true;
+        const base = lunarOf(ty,tm,td);
+        if(!cl) return false;
+        const wantDay = String(t.lunarDay || (base ? base.getDay() : ''));
+        if(String(cl.getDay()) !== wantDay) return false;
+        if(t.repeat==='lunar_yearly'){
+          const wantMonth = base ? base.getMonth() : -1;
+          if(cl.getMonth() !== wantMonth) return false;
+        }
+        return true;
       }
       if(t.repeat==='custom_days' && t.customDays){
         const diff = Math.ceil((new Date(cy,cm-1,cd)-new Date(ty,tm-1,td))/86400000);
@@ -941,14 +964,33 @@ function renderSelected(){
   document.getElementById('dailyJournalInput').value = appData.journals[selectedKey]||'';
   const list = document.getElementById('selTasks');
   const tasks = getTasksForDate(selectedKey);
-  list.innerHTML = tasks.length ? tasks.map(t=>taskHTML(t)).join('') : '<p class="text-xs text-center py-3" style="color:var(--muted)">無排程事項</p>';
+  list.innerHTML = tasks.length ? tasks.map(t=>taskHTML(t, selectedKey)).join('') : '<p class="text-xs text-center py-3" style="color:var(--muted)">無排程事項</p>';
   lucide.createIcons();
   refreshWeather();
   relang();
 }
 
 /* ==================== TASK UI ==================== */
-function taskHTML(t){
+function taskIsDone(t, dk){
+  if(t.repeat && t.repeat!=='none') return !!(t.doneDates && t.doneDates[dk]);
+  return !!t.completed;
+}
+function setTaskDone(id, dk){
+  const t = appData.tasks.find(x=>x.id===id);
+  if(!t) return;
+  if(t.repeat && t.repeat!=='none'){
+    t.doneDates = t.doneDates || {};
+    if(t.doneDates[dk]) delete t.doneDates[dk];
+    else t.doneDates[dk] = true;
+  } else {
+    t.completed = !t.completed;
+  }
+  save(); refreshAll();
+}
+
+function taskHTML(t, dk){
+  dk = dk || t.date || fmtKey(new Date());
+  const done = taskIsDone(t, dk);
   const cat = appData.categories.find(c=>c.id===t.categoryId)||{name:'其他',icon:'paperclip',color:'#999'};
   const subs = (t.subtasks||[]).map((s,i)=>`
     <div class="subtask-row flex items-center gap-1 text-[11px] mt-0.5">
@@ -958,10 +1000,10 @@ function taskHTML(t){
     </div>`).join('');
   const tags = (t.tags||[]).map(tg=>`<span class="chip text-[9px]">#${esc(tg)}</span>`).join('');
   const rm = (t.reminders||[]).length;
-  return `<div class="glass2 p-2 ${t.completed?'task-done':''}">
+  return `<div class="glass2 p-2 ${done?'task-done':''}">
     <div class="flex items-start gap-2">
-      <button class="mt-0.5 w-5 h-5 rounded flex items-center justify-center" style="border:1px solid var(--line)" onclick="toggleTask('${t.id}')">
-        ${t.completed?'<i data-lucide="check" class="w-3 h-3"></i>':''}
+      <button class="mt-0.5 w-5 h-5 rounded flex items-center justify-center" style="border:1px solid var(--line)" onclick="setTaskDone('${t.id}','${dk}')">
+        ${done?'<i data-lucide="check" class="w-3 h-3"></i>':''}
       </button>
       <div class="flex-1">
         <div class="text-sm">${esc(t.title)}
@@ -1016,6 +1058,11 @@ function openAddTask(isBacklog){
   document.getElementById('tDate').value = selectedKey;
   document.getElementById('tTime').value='';
   document.getElementById('tAmount').value='';
+  document.getElementById('tRepeat').value='none';
+  document.getElementById('tCustomDays').value='';
+  document.getElementById('tLunarDay').value='1';
+  onRepeatChange('none');
+  document.getElementById('tTags').value='';
   document.getElementById('tNoDate').checked = !!isBacklog;
   toggleDateBox(!!isBacklog);
   renderCats();
@@ -1103,7 +1150,7 @@ function handleSaveTask(e){
     amount: document.getElementById('tAmount').value,
     currency: document.getElementById('tCurrency').value,
     isBacklog,
-    date: isBacklog?null:document.getElementById('tDate').value,
+    date: isBacklog ? null : (document.getElementById('tDate').value || fmtKey(new Date())),
     time: document.getElementById('tTime').value,
     repeat: document.getElementById('tRepeat').value,
     customDays: document.getElementById('tCustomDays').value,
@@ -1115,13 +1162,27 @@ function handleSaveTask(e){
   };
   if(editId){
     const i = appData.tasks.findIndex(t=>t.id===editId);
-    if(i>=0){ obj.completed = appData.tasks[i].completed; appData.tasks[i]=obj; }
+    if(i>=0){
+      const old = appData.tasks[i];
+      obj.completed = old.completed;
+      if(old.doneDates) obj.doneDates = old.doneDates;   // keep per-date history
+      appData.tasks[i] = obj;
+    }
   } else appData.tasks.push(obj);
   save(); closeTaskModal(); refreshAll(); toast('已儲存', obj.title);
 }
-function toggleTask(id){ const t=appData.tasks.find(x=>x.id===id); if(t){t.completed=!t.completed; save(); refreshAll();} }
+function toggleTask(id){ setTaskDone(id, fmtKey(new Date())); }
 function toggleSub(tid,i){ const t=appData.tasks.find(x=>x.id===tid); if(t&&t.subtasks[i]){t.subtasks[i].done=!t.subtasks[i].done; save(); refreshAll();} }
-function delTask(id){ if(!confirm('刪除？'))return; appData.tasks = appData.tasks.filter(x=>x.id!==id); save(); refreshAll(); }
+function delTask(id){
+  if(!confirm('刪除？'))return;
+  appData.tasks = appData.tasks.filter(x=>x.id!==id);
+  try{
+    const f=getFiredMap();
+    Object.keys(f).forEach(k=>{ if(k.split('|')[0]===id) delete f[k]; });
+    localStorage.setItem('lumi_fired', JSON.stringify(f));
+  }catch(e){}
+  save(); refreshAll();
+}
 function editTask(id){
   const t = appData.tasks.find(x=>x.id===id); if(!t) return;
   openAddTask(t.isBacklog);
@@ -1134,6 +1195,9 @@ function editTask(id){
   document.getElementById('tDate').value=t.date||selectedKey;
   document.getElementById('tTime').value=t.time||'';
   document.getElementById('tRepeat').value=t.repeat||'none';
+  document.getElementById('tCustomDays').value=t.customDays||'';
+  document.getElementById('tLunarDay').value=t.lunarDay||'';
+  onRepeatChange(t.repeat||'none');
   document.getElementById('tTags').value=(t.tags||[]).join(', ');
   document.getElementById('tNotes').value=t.notes||'';
   document.getElementById('tLocation').value=t.location||'';
@@ -1151,7 +1215,7 @@ function saveJournal(){
 }
 function renderJournals(){
   const q = document.getElementById('journalSearch').value.toLowerCase().trim();
-  const es = Object.entries(appData.journals).filter(([k,v])=>v && (!q||v.toLowerCase().includes(q)||k.includes(q))).sort((a,b)=>b.localeCompare(a));
+  const es = Object.entries(appData.journals).filter(([k,v])=>v && (!q||String(v).toLowerCase().includes(q)||k.includes(q))).sort((a,b)=>b.localeCompare(a));
   const el = document.getElementById('journalsList');
   el.innerHTML = es.length? es.map(([k,v])=>`<div class="glass2 p-2 cursor-pointer" onclick="jumpJournal('${k}')"><b>${k}</b><div class="text-xs opacity-70">${esc(v.slice(0,100))}${v.length>100?'…':''}</div></div>`).join('')
     : '<p class="text-xs text-center py-4" style="color:var(--muted)">尚無日誌</p>';
@@ -1164,13 +1228,13 @@ function renderAll(){
   let list = appData.tasks;
   if(cat!=='all') list = list.filter(t=>t.categoryId===cat);
   if(q) list = list.filter(t=>t.title.toLowerCase().includes(q)||(t.tags||[]).some(tg=>tg.toLowerCase().includes(q))||(t.aiNote||'').toLowerCase().includes(q));
-  document.getElementById('allList').innerHTML = list.length? list.map(t=>taskHTML(t)).join('') : '<p class="text-xs text-center py-4" style="color:var(--muted)">沒有符合</p>';
+  document.getElementById('allList').innerHTML = list.length? list.map(t=>taskHTML(t, t.date||fmtKey(new Date()))).join('') : '<p class="text-xs text-center py-4" style="color:var(--muted)">沒有符合</p>';
   lucide.createIcons();
 }
 function renderBacklog(){
   const list = appData.tasks.filter(t=>t.isBacklog);
   document.getElementById('bBadge').innerText = list.length||'';
-  document.getElementById('backlogList').innerHTML = list.length? list.map(t=>taskHTML(t)).join('') : '<p class="text-xs text-center py-4" style="color:var(--muted)">無</p>';
+  document.getElementById('backlogList').innerHTML = list.length? list.map(t=>taskHTML(t, t.date||fmtKey(new Date()))).join('') : '<p class="text-xs text-center py-4" style="color:var(--muted)">無</p>';
   lucide.createIcons();
 }
 function renderStats(){
@@ -1178,7 +1242,8 @@ function renderStats(){
   let money=0; appData.tasks.forEach(t=>{ if(t.amount) money += parseFloat(t.amount); });
   document.getElementById('stTotal').innerText=total;
   document.getElementById('stDone').innerText=done;
-  document.getElementById('stMoney').innerText='$'+money.toFixed(2);
+  const curSet = new Set(appData.tasks.filter(t=>t.amount).map(t=>t.currency||'ARS'));
+  document.getElementById('stMoney').innerText = '$'+money.toFixed(2) + (curSet.size>1 ? ' (混合幣別)' : '');
   document.getElementById('finList').innerHTML = appData.tasks.filter(t=>t.amount).map(i=>`<div class="flex justify-between text-xs p-1"><span>${esc(i.title)}</span><b style="color:var(--accent)">$${i.amount} ${i.currency}</b></div>`).join('')||'<p class="text-xs" style="color:var(--muted)">尚無</p>';
 }
 
@@ -1221,6 +1286,8 @@ function toggleTheme(){
 
 /* ==================== SETTINGS / BACKUP ==================== */
 function openSettings(){
+  const ns=document.getElementById('notifStatus');
+  if(ns) ns.innerText = ('Notification' in window) ? (Notification.permission==='granted'?'已開啟':'未開啟') : '不支援';
   document.getElementById('sUrl').value=appData.settings.supabaseUrl||'';
   document.getElementById('sKey').value=appData.settings.supabaseKey||'';
   document.getElementById('aiLeft').innerText=getQuota();
@@ -1241,7 +1308,20 @@ function exportData(){
 }
 function importData(e){
   const f=e.target.files[0]; if(!f)return;
-  const r=new FileReader(); r.onload=ev=>{ try{ appData=JSON.parse(ev.target.result); save(); location.reload(); }catch(err){ toast('匯入失敗',err.message); } };
+  const r=new FileReader(); r.onload=ev=>{
+    try{
+      const d=JSON.parse(ev.target.result);
+      if(!d || typeof d!=='object' || !Array.isArray(d.tasks)){
+        toast('匯入失敗','檔案格式不正確');
+        return;
+      }
+      d.tasks = d.tasks.filter(t=>t && t.title);
+      if(!d.categories || !d.categories.length) d.categories = DEFAULT_CATS;
+      if(!d.journals || typeof d.journals!=='object') d.journals = {};
+      appData=Object.assign({}, appData, d, {updatedAt: Date.now()});
+      save(); location.reload();
+    }catch(err){ toast('匯入失敗',err.message); }
+  };
   r.readAsText(f);
 }
 
@@ -1300,8 +1380,9 @@ function appendChat(role,text,withSpeaker){
   if(role==='user') d.className='flex justify-end';
   d.innerHTML = role==='user'
     ? `<div class="glass2 px-3 py-2 max-w-[85%]" style="background:var(--accent);color:#fff">${esc(text)}</div>`
-    : `<div class="glass2 px-3 py-2 max-w-[90%] relative">${text}${withSpeaker?'<button onclick="speakText(this)" style="position:absolute;bottom:4px;right:4px;background:none;border:none;cursor:pointer;font-size:14px;opacity:0.5" title="朗讀">🔊</button>':''}</div>`;
+    : `<div class="glass2 px-3 py-2 max-w-[90%] relative">${esc(text).replace(/\n/g,'<br>')}${withSpeaker?'<button onclick="speakText(this)" style="position:absolute;bottom:4px;right:4px;background:none;border:none;cursor:pointer;font-size:13px;opacity:0.5" title="朗讀"><i data-lucide="volume-2" class="w-3 h-3"></i></button>':''}</div>`;
   c.appendChild(d); c.scrollTop=c.scrollHeight;
+  try{ lucide.createIcons(); }catch(e){}
 }
 async function sendLumi(){
   const inp=document.getElementById('lumiInput');
@@ -1423,29 +1504,91 @@ function speakText(btn){
 }
 
 /* ==================== ALARMS ==================== */
-function startAlarms(){
-  setInterval(()=>{
-    const now=new Date(), today=fmtKey(now);
-    const time=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-    appData.tasks.forEach(t=>{
-      if(t.date===today && t.time===time && !t.completed && !t._notified){
-        t._notified=true;
-        toast('⏰ 提醒', t.title);
-        // If alarm/both, beep
-        const rem = (t.reminders||[]).find(r=>r.type==='at_time');
-        if(rem && (rem.method==='alarm'||rem.method==='both')) beep();
-      }
-    });
-  }, 20000);
+const REM_OFFSETS = {
+  at_time:0, '15m':15*60000, '30m':30*60000, '1h':3600000, '2h':7200000,
+  '1d':86400000, '2d':2*86400000, '3d':3*86400000, '1w':7*86400000
+};
+
+function reminderFireAt(dateKey, timeStr, rem){
+  if(rem.type==='custom' && rem.customAt){
+    const d = new Date(rem.customAt);
+    return isNaN(d.getTime()) ? null : d.getTime();
+  }
+  const off = REM_OFFSETS[rem.type];
+  if(off === undefined) return null;
+  const [y,m,d] = dateKey.split('-').map(Number);
+  const [hh,mm] = (timeStr || '09:00').split(':').map(Number);
+  return new Date(y, m-1, d, hh||0, mm||0, 0, 0).getTime() - off;
 }
-function beep(){
+
+function getFiredMap(){
+  try { return JSON.parse(localStorage.getItem('lumi_fired')||'{}'); } catch(e){ return {}; }
+}
+function pruneFired(map){
+  const cut = Date.now() - 3*86400000;
+  Object.keys(map).forEach(k=>{ if(map[k] < cut) delete map[k]; });
+}
+
+function notify(title, body){
   try{
-    const ac=new (window.AudioContext||window.webkitAudioContext)();
-    const o=ac.createOscillator(), g=ac.createGain();
-    o.connect(g); g.connect(ac.destination);
-    o.frequency.value=880; g.gain.value=0.3;
-    o.start(); setTimeout(()=>{o.stop();}, 600);
+    if('Notification' in window && Notification.permission==='granted'){
+      new Notification(title, {body: body, icon:'favicon-192.png', tag:'lumi-'+Date.now()});
+      return true;
+    }
   }catch(e){}
+  return false;
+}
+
+function fireReminder(t, rem, dateKey){
+  const title = '⏰ ' + (t.title||'提醒');
+  const body = dateKey + (t.time? ' '+t.time : '');
+  if(rem.method==='alarm' || rem.method==='both'){
+    beep();
+    if(navigator.vibrate) try{ navigator.vibrate([200,100,200]); }catch(e){}
+  }
+  if(rem.method==='banner' || rem.method==='both'){
+    if(!notify(title, body)) toast(title, body);
+  }
+}
+
+function checkReminders(){
+  const fired = getFiredMap();
+  const now = Date.now();
+  const base = new Date();
+  for(let i=-1; i<=8; i++){
+    const dt = new Date(base.getFullYear(), base.getMonth(), base.getDate()+i);
+    const dk = fmtKey(dt);
+    const occs = getTasksForDate(dk);
+    occs.forEach(t=>{
+      if(taskIsDone(t, dk)) return;
+      (t.reminders||[]).forEach((rem, idx)=>{
+        const at = reminderFireAt(dk, t.time, rem);
+        if(at === null) return;
+        if(now < at) return;                    // not due yet
+        if(now - at > 6*60000) return;          // more than 6 min late: skip (avoid spam)
+        const key = t.id+'|'+dk+'|'+idx+'|'+at;
+        if(fired[key]) return;
+        fired[key] = now;
+        fireReminder(t, rem, dk);
+      });
+    });
+  }
+  pruneFired(fired);
+  try{ localStorage.setItem('lumi_fired', JSON.stringify(fired)); }catch(e){}
+}
+
+function startAlarms(){
+  setTimeout(checkReminders, 3000);
+  setInterval(checkReminders, 30000);
+}
+
+async function enableNotifications(){
+  if(!('Notification' in window)){ toast('此瀏覽器不支援通知'); return; }
+  const p = await Notification.requestPermission();
+  if(p==='granted') toast('通知已開啟', '提醒會顯示在通知欄');
+  else toast('未開啟通知', '提醒只會在 App 內顯示');
+  const el = document.getElementById('notifStatus');
+  if(el) el.innerText = (p==='granted') ? '已開啟' : '未開啟';
 }
 
 /* ==================== INIT ==================== */
