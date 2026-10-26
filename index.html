@@ -312,7 +312,10 @@
   </div>
   <div id="lumiChat" class="h-56 overflow-y-auto scroll-thin px-3 flex flex-col gap-2 border-t" style="border-color:var(--line)"></div>
   <div class="p-3 flex gap-2 border-t" style="border-color:var(--line)">
-    <button class="icon-btn" id="micBtn" onmousedown="startVoice(this)" onmouseup="stopVoice(this)" onmouseleave="stopVoice(this)" title="按住講話"><i data-lucide="mic" class="w-4 h-4"></i></button>
+    <button class="icon-btn" id="micBtn" style="touch-action:none"
+      onmousedown="startVoice(event)" onmouseup="stopVoice()" onmouseleave="stopVoice()"
+      ontouchstart="startVoice(event);event.preventDefault()" ontouchend="stopVoice();event.preventDefault()"
+      title="按住講話"><i data-lucide="mic" class="w-4 h-4"></i></button>
     <input id="lumiInput" class="flex-1" placeholder="問我任何事..." onkeydown="if(event.key==='Enter')sendLumi()">
     <button class="btn" onclick="sendLumi()">送</button>
   </div>
@@ -466,19 +469,61 @@ function renderCalendar(){
     html += '</div>';
     area.innerHTML = html;
   } else {
-    // week / day3 / day
+    // week / day3 / day — TickTick style time grid
     const days = calView==='week'?7:calView==='day3'?3:1;
     document.getElementById('calTitle').innerText = days===7?'本週':days===3?'3 天':'一日';
-    let html = '<div class="flex flex-col gap-2">';
+    const CATS = {payment:'#FFB366', housework:'#9CCC9C', shopping:'#9CB8FF', work:'#D4A5FF', health:'#FFB3C1', other:'#D0D0D0'};
+    const H_START=6, H_END=23, ROW=48; // px per hour
     const start = new Date(currentDate);
     if(calView==='week') start.setDate(start.getDate()-start.getDay());
+    let html = `<div style="overflow-x:auto"><div style="min-width:${days*140}px">`;
+    // header row: day names
+    html += '<div class="flex" style="margin-bottom:4px">';
+    html += '<div style="width:40px;flex-shrink:0"></div>';
     for(let i=0;i<days;i++){
-      const d = new Date(start); d.setDate(start.getDate()+i);
-      const dk = fmtKey(d);
-      const tasks = getTasksForDate(dk);
-      html += `<div class="glass p-2"><div class="flex justify-between text-xs mb-1"><b>${d.getMonth()+1}/${d.getDate()}</b><span class="opacity-60">${tasks.length} 項</span></div>`;
-      html += tasks.map(t=>`<div class="text-[11px] p-1 rounded" style="background:var(--panel2)">${t.time?t.time+' ':''}${esc(t.title)}</div>`).join('')||'<div class="text-[11px] opacity-40">—</div>';
+      const d=new Date(start); d.setDate(start.getDate()+i);
+      const today = fmtKey(new Date())===fmtKey(d);
+      html += `<div class="flex-1 text-center text-xs ${today?'font-bold':''}" style="${today?'color:var(--accent)':''}">${d.getMonth()+1}/${d.getDate()}</div>`;
+    }
+    html += '</div>';
+    // grid
+    html += '<div class="flex relative">';
+    // hour labels
+    html += `<div style="width:40px;flex-shrink:0">`;
+    for(let h=H_START;h<H_END;h++){
+      html += `<div style="height:${ROW}px;font-size:9px;color:var(--muted);text-align:right;padding-right:4px">${h}:00</div>`;
+    }
+    html += '</div>';
+    // day columns
+    for(let i=0;i<days;i++){
+      const d=new Date(start); d.setDate(start.getDate()+i);
+      const dk=fmtKey(d);
+      const tasks=getTasksForDate(dk).filter(t=>t.time);
+      html += `<div class="flex-1 relative" style="border-left:1px solid var(--line)">`;
+      // hour lines
+      for(let h=H_START;h<H_END;h++){
+        html += `<div style="height:${ROW}px;border-bottom:1px solid var(--line)"></div>`;
+      }
+      // task blocks
+      tasks.forEach(t=>{
+        const [hh,mm]=(t.time||'00:00').split(':').map(Number);
+        const top=(hh-H_START)*ROW+(mm/60)*ROW;
+        const dur=ROW/2; // default 30min block
+        const color=CATS[t.categoryId]||CATS.other;
+        html += `<div onclick="pickDate('${dk}')" style="position:absolute;top:${top}px;left:2px;right:2px;height:${dur}px;background:${color}cc;border-radius:6px;padding:2px 4px;font-size:10px;overflow:hidden;cursor:pointer">${esc(t.title)}</div>`;
+      });
       html += '</div>';
+    }
+    html += '</div></div></div>';
+    // all-day / no-time tasks below
+    html += '<div class="mt-3">';
+    for(let i=0;i<days;i++){
+      const d=new Date(start); d.setDate(start.getDate()+i);
+      const dk=fmtKey(d);
+      const nt=getTasksForDate(dk).filter(t=>!t.time);
+      if(nt.length){
+        html += `<div class="text-xs mb-1"><b>${d.getMonth()+1}/${d.getDate()}</b> ${nt.map(t=>'<span class="chip">'+esc(t.title)+'</span>').join(' ')}</div>`;
+      }
     }
     html += '</div>';
     area.innerHTML = html;
@@ -912,29 +957,35 @@ async function sendLumi(){
 }
 function askAI(q){ openLumi(); document.getElementById('lumiInput').value=q; sendLumi(); }
 
-// Hold-to-talk voice (like 小布)
-let rec=null, recActive=false;
-function startVoice(btn){
-  if(!('webkitSpeechRecognition' in window)){ toast('瀏覽器不支援語音'); return; }
-  rec = new (window.SpeechRecognition||window.webkitSpeechRecognition)();
-  rec.lang='zh-TW'; rec.interimResults=true;
-  document.getElementById('lumiImg').style.width='140px';
-  document.getElementById('lumiImg').style.height='160px';
-  btn.style.background='var(--accent)';
-  rec.onresult=e=>{
-    const txt = Array.from(e.results).map(r=>r[0].transcript).join('');
-    document.getElementById('lumiInput').value=txt;
+// Hold-to-talk voice (like WeChat/Doubao)
+let rec=null, recActive=false, micBtn=null;
+function startVoice(e){
+  if(recActive) return;
+  micBtn = e.currentTarget || document.getElementById('micBtn');
+  if(!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)){ toast('瀏覽器不支援語音'); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  rec = new SR();
+  rec.lang='zh-TW'; rec.interimResults=true; rec.continuous=true;
+  const img=document.getElementById('lumiImg');
+  if(img){ img.style.width='120px'; img.style.height='140px'; img.style.opacity='0.7'; }
+  if(micBtn) micBtn.style.background='var(--accent)';
+  const inp=document.getElementById('lumiInput');
+  rec.onresult=ev=>{
+    let txt='';
+    for(const r of ev.results) txt+=r[0].transcript;
+    inp.value=txt;
   };
-  rec.onend=()=>{ stopVoice(btn); };
-  rec.start(); recActive=true;
+  rec.onerror=ev=>{ toast('語音錯誤: '+ev.error); stopVoice(); };
+  rec.onend=()=>{ if(recActive) stopVoice(); };
+  try{ rec.start(); recActive=true; }catch(err){}
 }
-function stopVoice(btn){
+function stopVoice(){
   if(!recActive) return;
   recActive=false;
   try{ rec&&rec.stop(); }catch(e){}
-  document.getElementById('lumiImg').style.width='';
-  document.getElementById('lumiImg').style.height='';
-  btn.style.background='';
+  const img=document.getElementById('lumiImg');
+  if(img){ img.style.width=''; img.style.height=''; img.style.opacity=''; }
+  if(micBtn) micBtn.style.background='';
   const v=document.getElementById('lumiInput').value.trim();
   if(v) sendLumi();
 }
