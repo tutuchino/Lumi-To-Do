@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- LUMI v21 -->
+<!-- LUMI v22 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <title>雲小朵 Lumi · 待辦</title>
 <meta name="theme-color" content="#EBDEC2">
@@ -495,6 +495,11 @@ async function cloudPushNow(){
         <div id="locStatus" class="mt-1" style="color:var(--muted)"></div>
       </div>
       <div class="glass2 p-2">
+        <b>💻 安裝到電腦／手機</b>
+        <button id="installBtn" class="btn-ghost mt-1 w-full hidden" onclick="installApp()">安裝 Lumi</button>
+        <div class="mt-1" style="color:var(--muted)">按上面按鈕安裝，或從瀏覽器選單選「安裝 Lumi」</div>
+      </div>
+      <div class="glass2 p-2">
         <b>🔔 提醒通知</b>
         <button class="btn-ghost mt-1 w-full" onclick="enableNotifications()">開啟系統通知</button>
         <div class="mt-1" style="color:var(--muted)">狀態：<span id="notifStatus">--</span></div>
@@ -625,7 +630,9 @@ const I18N = {
     '優先度':'Priority','低':'Low','中':'Medium','高':'High',
     '不排日期（Backlog）':'No date (Backlog)','不排日期':'No date',
     '標籤（用逗號分隔）':'Tags (comma separated)',
-    '提醒通知':'Reminders & Notifications','開啟系統通知':'Enable system notifications',
+    '提醒通知':'Reminders & Notifications',
+    '安裝到電腦／手機':'Install on this device','安裝 Lumi':'Install Lumi',
+    '按上面按鈕安裝，或從瀏覽器選單選「安裝 Lumi」':'Tap the button above, or choose "Install Lumi" from the browser menu','開啟系統通知':'Enable system notifications',
     '狀態：':'Status:','已開啟':'On','未開啟':'Off','不支援':'Not supported',
     '混合幣別':'(mixed currencies)','通知已開啟':'Notifications enabled',
     '提醒會顯示在通知欄':'Reminders will appear in your notification bar',
@@ -1589,6 +1596,35 @@ async function enableNotifications(){
   else toast('未開啟通知', '提醒只會在 App 內顯示');
   const el = document.getElementById('notifStatus');
   if(el) el.innerText = (p==='granted') ? '已開啟' : '未開啟';
+}
+
+
+/* ==================== PWA INSTALL ==================== */
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const b = document.getElementById('installBtn');
+  if(b) b.classList.remove('hidden');
+});
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  toast('已安裝', '可以從桌面或開始選單直接開啟 Lumi');
+});
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+async function installApp(){
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    const r = await deferredPrompt.userChoice;
+    if(r.outcome === 'accepted') deferredPrompt = null;
+    return;
+  }
+  toast('請用瀏覽器選單安裝',
+    'Chrome／Edge：網址列右側安裝圖示，或選單「安裝 Lumi」。Safari：檔案 → 加到程序塢');
 }
 
 /* ==================== INIT ==================== */
